@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use serde::Deserialize;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::error::Error;
 
@@ -20,11 +20,18 @@ struct OutputRecord {
     locked: bool,
 }
 
+#[derive(Debug)]
 enum TransactionError {
-    InsufficientBalance {
+    InsufficientFunds {
         required: CurrencyFloat,
         actual: CurrencyFloat,
-    }
+    },
+    AccountLocked,
+    DuplicateTxId,
+    TxAlreadyDisputed,
+    TxDoesNotExist,
+    InvalidDispute,
+    TxNotDisputed,
 }
 
 // Transaction structs
@@ -86,11 +93,11 @@ struct Chargeback {
 
 #[derive(Debug)]
 enum TransactionContainer {
-    Deposit(Deposit),
-    Withdrawal(Withdrawal),
-    Dispute(Dispute),
-    Resolve(Resolve),
-    Chargeback(Chargeback),
+    Deposit(Result<Deposit, TransactionError>),
+    Withdrawal(Result<Withdrawal, TransactionError>),
+    Dispute(Result<Dispute, TransactionError>),
+    Resolve(Result<Resolve, TransactionError>),
+    Chargeback(Result<Chargeback, TransactionError>),
 }
 
 // Internal state
@@ -118,7 +125,9 @@ impl Default for Account {
 #[derive(Debug)]
 struct State {
     accounts: HashMap<ClientId, Account>,
+    // TODO: log disputes, resolutions, & chargebacks?
     transactions: HashMap<TransactionId, TransactionContainer>,
+    active_disputes: HashSet<TransactionId>,
 }
 
 impl State {
@@ -126,17 +135,102 @@ impl State {
         Self {
             accounts: HashMap::new(),
             transactions: HashMap::new(),
+            active_disputes: HashSet::new(),
         }
     }
 }
 
-
 // Handlers
 
-fn handle_deposit(deposit: Deposit, state: &mut State) {
-    // TODO: check locked
-    // TODO: add transactions to state
-    state.accounts
+fn check_for_duplicate_tx_id(tx_id: TransactionId, state: &State) -> Result<(), TransactionError> {
+    // NOTE: discarding duplicate transactions
+    // TODO: Efficiently record duplicate transactions?
+
+    if let Some(tx) = state.transactions.get(&tx_id) {
+        // Duplicate transactions are a bad sign
+        Err(TransactionError::DuplicateTxId)
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_deposit(deposit: &Deposit, state: &State) -> Result<(), TransactionError> {
+    check_for_duplicate_tx_id(deposit.tx_id, state)?;
+
+    if let Some(account) = state.accounts.get(&deposit.client_id) {
+        if account.locked {
+            // Locked accounts cannot deposit
+            return Err(TransactionError::AccountLocked);
+        }
+    }
+
+    // New and unlocked accounts can deposit
+    Ok(())
+}
+
+fn validate_withdrawal(withdrawal: &Withdrawal, state: &State) -> Result<(), TransactionError> {
+    check_for_duplicate_tx_id(withdrawal.tx_id, state)?;
+
+    if let Some(account) = state.accounts.get(&withdrawal.client_id) {
+        if account.locked {
+            // Locked accounts cannot withdraw
+            return Err(TransactionError::AccountLocked);
+        } else {
+            // unlocked accounts can withdraw if they have enough funds
+            if account.available >= withdrawal.amount {
+                Ok(())
+            } else {
+                return Err(TransactionError::InsufficientFunds {
+                    required: withdrawal.amount,
+                    actual: account.available,
+                });
+            }
+        }
+    } else {
+        // New accounts cannot withdraw
+        // TODO: This would be a weird error for a 0-amount withdrawal
+        return Err(TransactionError::InsufficientFunds {
+            required: withdrawal.amount,
+            actual: 0.0,
+        });
+    }
+}
+
+fn validate_dispute(dispute: &Dispute, state: &State) -> Result<(), TransactionError> {
+    // NOTE: disputes do not have their own transaction id, they refer to a deposit or withdrawal
+    // NOTE: locked accounts are still allowed to dispute, just not deposit or withdraw
+
+    // NOTE: Cannot dispute an actively disputed transaction
+    if state.active_disputes.contains(&dispute.tx_id) {
+        return Err(TransactionError::TxAlreadyDisputed);
+    }
+
+    // Get disputed transaction from log
+    if let Some(disputed_transaction) = state.transactions.get(&dispute.tx_id) {
+        // NOTE: Only deposits may be disputed
+        if let TransactionContainer::Deposit(_) = disputed_transaction {
+            Ok(())
+        } else {
+            Err(TransactionError::InvalidDispute)
+        }
+    } else {
+        Err(TransactionError::TxDoesNotExist)
+    }
+}
+
+fn validate_resolve(resolve: &Resolve, state: &State) -> Result<(), TransactionError> {
+    unimplemented!()
+}
+
+fn validate_chargeback(chargeback: &Chargeback, state: &State) -> Result<(), TransactionError> {
+    unimplemented!()
+}
+
+// NOTE: Assuming transaction has already been validated
+fn record_deposit(deposit: Deposit, state: &mut State) {
+    // Update account
+    state
+        .accounts
         .entry(deposit.client_id)
         // Modify account if it's present
         .and_modify(|account| account.available += deposit.amount)
@@ -145,39 +239,94 @@ fn handle_deposit(deposit: Deposit, state: &mut State) {
             available: deposit.amount,
             ..Default::default()
         });
+
+    // Log transaction
+    state
+        .transactions
+        .entry(deposit.tx_id)
+        .or_insert(TransactionContainer::Deposit(Ok(deposit)));
 }
 
-fn handle_withdrawal(withdrawal: Withdrawal, state: &mut State) -> Result<(), TransactionError> {
-    // TODO: check locked
-    // TODO: add transactions to state
-    // Get account or create one if not present
-    let account = state.accounts
-        .entry(withdrawal.client_id)
-        .or_default();
+// NOTE: Assuming transaction has already been validated
+fn record_withdrawal(withdrawal: Withdrawal, state: &mut State) {
+    // Since withdrawing from an account with no existing balance is invalid,
+    // we can assume that account already exists (and unwrap the option)
+    let account = state.accounts.get_mut(&withdrawal.client_id).unwrap();
 
-    if account.available > withdrawal.amount {
-        // Withdraw if sufficient funds are available
-        account.available -= withdrawal.amount;
-        Ok(())
+    // Update balance
+    account.available -= withdrawal.amount;
+
+    // Log transaction
+    state
+        .transactions
+        .entry(withdrawal.tx_id)
+        .or_insert(TransactionContainer::Withdrawal(Ok(withdrawal)));
+}
+
+fn modify_balances_for_deposit_dispute(deposit: &Deposit, account: &mut Account) {
+    account.available -= deposit.amount;
+    account.held += deposit.amount;
+}
+
+// NOTE: Assuming dispute has already been validated
+fn record_dispute(dispute: Dispute, state: &mut State) {
+    // Valid disputes correspond to existing deposit transactions
+    if let Some(TransactionContainer::Deposit(Ok(disputed_deposit))) =
+        state.transactions.get(&dispute.tx_id)
+    {
+        // Get associated account
+        if let Some(account) = state.accounts.get_mut(&dispute.client_id) {
+            // Modify account balances
+            modify_balances_for_deposit_dispute(disputed_deposit, account);
+
+            // Mark the transaction as actively disputed
+            state.active_disputes.insert(dispute.tx_id);
+        } else {
+            log::warn!(
+                "Attempted to record dispute for nonexistent account - did you forget to validate?"
+            );
+        }
     } else {
-        // Otherwise, do nothing
-        Err(TransactionError::InsufficientBalance {
-            required: withdrawal.amount,
-            actual: account.available
-        })
+        log::warn!("Attempted to record invalid dispute - did you forget to validate?");
     }
 }
 
-fn handle_dispute(dispute: Dispute, state: &mut State) {
+fn record_resolve(resolve: Resolve, state: &State) {
     unimplemented!()
 }
 
-fn handle_resolve(resolve: Resolve, state: &mut State) {
+fn record_chargeback(chargeback: Chargeback, state: &State) {
     unimplemented!()
 }
 
-fn handle_chargeback(chargeback: Chargeback, state: &mut State) {
-    unimplemented!()
+fn handle_deposit(deposit: Deposit, state: &mut State) -> Result<(), TransactionError> {
+    validate_deposit(&deposit, state)?;
+    record_deposit(deposit, state);
+    Ok(())
+}
+
+fn handle_withdrawal(withdrawal: Withdrawal, state: &mut State) -> Result<(), TransactionError> {
+    validate_withdrawal(&withdrawal, state)?;
+    record_withdrawal(withdrawal, state);
+    Ok(())
+}
+
+fn handle_dispute(dispute: Dispute, state: &mut State) -> Result<(), TransactionError> {
+    validate_dispute(&dispute, state)?;
+    record_dispute(dispute, state);
+    Ok(())
+}
+
+fn handle_resolve(resolve: Resolve, state: &mut State) -> Result<(), TransactionError> {
+    validate_resolve(&resolve, state)?;
+    record_resolve(resolve, state);
+    Ok(())
+}
+
+fn handle_chargeback(chargeback: Chargeback, state: &mut State) -> Result<(), TransactionError> {
+    validate_chargeback(&chargeback, state)?;
+    record_chargeback(chargeback, state);
+    Ok(())
 }
 
 fn handle_transaction(record: TransactionRecord, state: &mut State) {
