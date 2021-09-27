@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::error::Error;
+use std::fs;
 use std::io;
 
 type ClientId = u16;
@@ -10,7 +11,7 @@ type TransactionId = u32;
 type CurrencyFloat = f32;
 
 /// A single row in the final output CSV
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
 struct OutputRecord {
     /// Id for client's account
     client: ClientId,
@@ -40,7 +41,7 @@ enum TransactionError {
 
 // Transaction structs
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 enum TransactionType {
     Deposit,
@@ -52,7 +53,7 @@ enum TransactionType {
 
 // TODO: Make these all optional to avoid serde errors that would break input stream.
 // Instead, we should handle parsing errors asynchronously
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct TransactionRecord {
     #[serde(rename = "type")]
     transaction_type: TransactionType,
@@ -494,7 +495,7 @@ fn report_balances<W: io::Write>(state: &State, output_stream: W) {
             locked: account.locked,
         };
 
-        if let Err(err) = writer.serialize(record) {
+        if let Err(err) = writer.serialize(&record) {
             log::error!("error writing serialized account balances: {}", err);
         }
     }
@@ -503,8 +504,26 @@ fn report_balances<W: io::Write>(state: &State, output_stream: W) {
     }
 }
 
-fn process_transactions(input_stream: (), output_stream: ()) {
-    todo!()
+fn process_transactions<R: io::Read, W: io::Write>(
+    input_stream: &mut R,
+    output_stream: &mut W,
+) -> Result<(), Box<dyn Error>> {
+    let mut reader = csv::ReaderBuilder::new()
+        // Trim whitespace before/after commas
+        .trim(csv::Trim::All)
+        .from_reader(input_stream);
+
+    // TODO: Async / multithreaded?
+    let mut state = State::new();
+
+    for result in reader.deserialize() {
+        let record: TransactionRecord = result?;
+        handle_transaction(record, &mut state);
+    }
+
+    report_balances(&state, output_stream);
+
+    Ok(())
 }
 
 // TODO: CL args
@@ -519,7 +538,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let input_csv_path = args
         .next()
         .expect("Missing required command line argument - input csv path");
-    log::info!("reading input CSV: {}", input_csv_path);
+
+    // Check for extraneous arguments
     if args.len() > 0 {
         log::warn!(
             "unused command line arguments: {:?}",
@@ -527,33 +547,79 @@ fn main() -> Result<(), Box<dyn Error>> {
         );
     }
 
-    // TODO: Async / multithreaded?
-    let mut state = State::new();
-
-    if let Ok(mut reader) = csv::ReaderBuilder::new()
-        // Trim whitespace before/after commas
-        .trim(csv::Trim::All)
-        .from_path(&input_csv_path)
-    {
-        for result in reader.deserialize() {
-            let record: TransactionRecord = result?;
-            handle_transaction(record, &mut state);
-        }
-
-        report_balances(&state, io::stdout());
+    // Open file and process transactions, writing to stdout
+    if let Ok(mut input_file) = fs::File::open(&input_csv_path) {
+        // TODO: Handle errors
+        process_transactions(&mut input_file, &mut io::stdout())?;
     } else {
-        log::error!("Could not read from input file '{}'", input_csv_path);
+        log::error!("Could not open input file '{}'", input_csv_path);
     }
 
+    // :)
     Ok(())
 }
 
 mod tests {
-    use crate::{handle_transaction, report_balances};
-    use crate::{Account, State, TransactionContainer, TransactionRecord, TransactionType};
+    use crate::{handle_transaction, process_transactions, report_balances};
+    use crate::{
+        Account, OutputRecord, State, TransactionContainer, TransactionRecord, TransactionType,
+    };
     use crate::{ClientId, TransactionId};
     use std::collections::{HashMap, HashSet};
+    use std::error::Error;
+    use std::fs;
     use std::io;
+    use std::path;
+
+    fn run_test_from_directory(directory: path::PathBuf) -> Result<(), Box<dyn Error>> {
+        let transactions_path = directory.join("transactions.csv");
+        let accounts_path = directory.join("accounts.csv");
+
+        let mut transactions_file = fs::File::open(&transactions_path).expect(&format!(
+            "Failed to open transactions file '{}'",
+            transactions_path.to_str().unwrap_or("<invalid path>")
+        ));
+
+        // Write results to in-memory buffer
+        let mut output_buf = io::Cursor::new(Vec::new());
+        process_transactions(&mut transactions_file, &mut output_buf)?;
+
+        // Re-deserialize actual results from output buffer
+        output_buf.set_position(0);
+        let actual_accounts_reader = csv::ReaderBuilder::new()
+            .trim(csv::Trim::All)
+            .from_reader(&mut output_buf);
+
+        // Read expected results from file
+        let expected_accounts_reader = csv::ReaderBuilder::new()
+            .trim(csv::Trim::All)
+            .from_path(&accounts_path)
+            .expect(&format!(
+                "Failed to open accounts file '{}'",
+                accounts_path.to_str().unwrap_or("<invalid path>")
+            ));
+
+        // Be reckless: serialize whole files into memory, failing if any error is encountered
+        let mut expected_accounts: Vec<OutputRecord> = expected_accounts_reader
+            .into_deserialize()
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut actual_accounts: Vec<OutputRecord> = actual_accounts_reader
+            .into_deserialize()
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Sort values by client id before comparing since the order of rows is not significant
+        expected_accounts.sort_by_key(|rec| rec.client);
+        actual_accounts.sort_by_key(|rec| rec.client);
+
+        assert_eq!(
+            expected_accounts,
+            actual_accounts,
+            "test failure in {:?}",
+            directory.to_str().unwrap_or("<invalid path>")
+        );
+
+        Ok(())
+    }
 
     fn run_test_scenario(
         initial_state: State,
@@ -565,6 +631,22 @@ mod tests {
             handle_transaction(transaction, &mut state);
         }
         assert_eq!(state.accounts, final_accounts);
+    }
+
+    #[test]
+    fn run_tests_from_testdata() -> Result<(), Box<dyn Error>> {
+        let testdata_path = path::Path::new("testdata");
+
+        for directory in fs::read_dir(testdata_path).unwrap() {
+            let test_path = directory.unwrap().path();
+            println!(
+                "Running test from directory: {}",
+                test_path.to_str().unwrap_or("<invalid path>")
+            );
+            run_test_from_directory(test_path)?;
+        }
+
+        Ok(())
     }
 
     #[test]
@@ -588,11 +670,7 @@ mod tests {
             },
         );
 
-        run_test_scenario(
-            initial_state,
-            transactions,
-            final_accounts,
-        );
+        run_test_scenario(initial_state, transactions, final_accounts);
     }
 
     #[test]
@@ -624,10 +702,6 @@ mod tests {
             },
         );
 
-        run_test_scenario(
-            initial_state,
-            transactions,
-            final_accounts,
-        );
+        run_test_scenario(initial_state, transactions, final_accounts);
     }
 }
