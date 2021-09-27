@@ -1,7 +1,8 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::error::Error;
+use std::io;
 
 type ClientId = u16;
 type TransactionId = u32;
@@ -9,7 +10,10 @@ type TransactionId = u32;
 type CurrencyFloat = f32;
 
 /// A single row in the final output CSV
+#[derive(Debug, Serialize)]
 struct OutputRecord {
+    /// Id for client's account
+    client: ClientId,
     /// Total funds available: should equal `total` - `held`
     available: CurrencyFloat,
     /// Total disputed funds: should equal `total` - `available`
@@ -343,7 +347,10 @@ fn record_resolve(resolve: Resolve, state: &mut State) {
 
             if !success {
                 // TODO: Avoid this
-                log::warn!("Transaction {} has been resolved, but it wasn't disputed", resolve.tx_id);
+                log::warn!(
+                    "Transaction {} has been resolved, but it wasn't disputed",
+                    resolve.tx_id
+                );
             }
         } else {
             log::warn!(
@@ -368,7 +375,10 @@ fn record_chargeback(chargeback: Chargeback, state: &mut State) {
 
             if !success {
                 // TODO: Avoid this
-                log::warn!("Transaction {} has been charged back, but it wasn't disputed", chargeback.tx_id);
+                log::warn!(
+                    "Transaction {} has been charged back, but it wasn't disputed",
+                    chargeback.tx_id
+                );
             }
         } else {
             log::warn!(
@@ -473,6 +483,26 @@ fn handle_transaction(record: TransactionRecord, state: &mut State) {
     }
 }
 
+fn report_balances(state: &State) {
+    let mut writer = csv::Writer::from_writer(io::stdout());
+    for (&client_id, account) in state.accounts.iter() {
+        let record = OutputRecord {
+            client: client_id,
+            available: account.available,
+            held: account.held,
+            total: account.available + account.held,
+            locked: account.locked,
+        };
+
+        if let Err(err) = writer.serialize(record) {
+            log::error!("error writing serialized account balances: {}", err);
+        }
+    }
+    if let Err(err) = writer.flush() {
+        log::error!("error flusing serialized account balances: {}", err);
+    }
+}
+
 // TODO: CL args
 fn main() -> Result<(), Box<dyn Error>> {
     // Allow log level to be set via env vars without recompiling
@@ -501,15 +531,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         .trim(csv::Trim::All)
         .from_path(&input_csv_path)
     {
-        let headers = reader.headers();
-        println!("headers = {:?}", headers);
         for result in reader.deserialize() {
             let record: TransactionRecord = result?;
-            println!("record: {:#?}", record);
             handle_transaction(record, &mut state);
         }
+
+        report_balances(&state);
     } else {
-        log::error!("Could not read from file {}", input_csv_path);
+        log::error!("Could not read from input file '{}'", input_csv_path);
     }
 
     Ok(())
