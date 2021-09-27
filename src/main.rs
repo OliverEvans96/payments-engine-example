@@ -374,6 +374,9 @@ fn record_chargeback(chargeback: Chargeback, state: &mut State) {
             // Mark the transaction as no longer disputed
             let success = state.active_disputes.remove(&chargeback.tx_id);
 
+            // Lock the account
+            account.locked = true;
+
             if !success {
                 // TODO: Avoid this
                 log::warn!(
