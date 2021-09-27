@@ -226,6 +226,32 @@ fn validate_chargeback(chargeback: &Chargeback, state: &State) -> Result<(), Tra
     unimplemented!()
 }
 
+// Balance modification
+
+fn modify_balances_for_deposit(deposit: &Deposit, account: &mut Account) {
+    account.available += deposit.amount;
+}
+
+fn modify_balances_for_withdrawal(withdrawal: &Withdrawal, account: &mut Account) {
+    account.available -= withdrawal.amount;
+}
+
+fn modify_balances_for_deposit_dispute(disputed_deposit: &Deposit, account: &mut Account) {
+    account.available -= disputed_deposit.amount;
+    account.held += disputed_deposit.amount;
+}
+
+fn modify_balances_for_resolve(disputed_deposit: &Deposit, account: &mut Account) {
+    account.available += disputed_deposit.amount;
+    account.held -= disputed_deposit.amount;
+}
+
+fn modify_balances_for_chargeback(disputed_deposit: &Deposit, account: &mut Account) {
+    account.held -= disputed_deposit.amount;
+}
+
+// Record transactions
+
 // NOTE: Assuming transaction has already been validated
 fn record_deposit(deposit: Deposit, state: &mut State) {
     // Update account
@@ -233,7 +259,7 @@ fn record_deposit(deposit: Deposit, state: &mut State) {
         .accounts
         .entry(deposit.client_id)
         // Modify account if it's present
-        .and_modify(|account| account.available += deposit.amount)
+        .and_modify(|account| modify_balances_for_deposit(&deposit, account))
         // Otherwise, lazily create new account
         .or_insert_with(|| Account {
             available: deposit.amount,
@@ -253,19 +279,13 @@ fn record_withdrawal(withdrawal: Withdrawal, state: &mut State) {
     // we can assume that account already exists (and unwrap the option)
     let account = state.accounts.get_mut(&withdrawal.client_id).unwrap();
 
-    // Update balance
-    account.available -= withdrawal.amount;
+    modify_balances_for_withdrawal(&withdrawal, account);
 
     // Log transaction
     state
         .transactions
         .entry(withdrawal.tx_id)
         .or_insert(TransactionContainer::Withdrawal(Ok(withdrawal)));
-}
-
-fn modify_balances_for_deposit_dispute(deposit: &Deposit, account: &mut Account) {
-    account.available -= deposit.amount;
-    account.held += deposit.amount;
 }
 
 // NOTE: Assuming dispute has already been validated
@@ -276,7 +296,7 @@ fn record_dispute(dispute: Dispute, state: &mut State) {
     {
         // Get associated account
         if let Some(account) = state.accounts.get_mut(&dispute.client_id) {
-            // Modify account balances
+
             modify_balances_for_deposit_dispute(disputed_deposit, account);
 
             // Mark the transaction as actively disputed
