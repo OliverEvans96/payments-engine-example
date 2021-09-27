@@ -3,10 +3,11 @@ use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt::{Debug, Display};
 
+use crate::currency::round_currency;
+pub use crate::currency::CurrencyFloat;
+
 pub type ClientId = u16;
 pub type TransactionId = u32;
-// Only need 4 decimals precision - f64 would be overkill
-pub type CurrencyFloat = f32;
 
 /// A single row in the final output CSV
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
@@ -21,6 +22,23 @@ pub struct OutputRecord {
     pub total: CurrencyFloat,
     /// Whether the account is locked: should be lock if a charge-back has occurred
     pub locked: bool,
+}
+
+// TODO: Test outputrecord formatting
+
+impl OutputRecord {
+    pub fn new(client_id: ClientId, account: &Account) -> Self {
+        OutputRecord {
+            client: client_id,
+            // NOTE: Rounding just in case some strange floating point phemonenon added extra digits
+            // It's still possible that this would still format to more than four digits,
+            // but it's a lot easier than writing a custom serializer / deserializer
+            available: round_currency(account.available),
+            held: round_currency(account.held),
+            total: round_currency(account.available + account.held),
+            locked: account.locked,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -48,7 +66,7 @@ pub enum TransactionError {
     },
     InvalidDispute {
         tx: TransactionId,
-        tx_type: TransactionType
+        tx_type: TransactionType,
     },
     TxNotDisputed {
         client: ClientId,

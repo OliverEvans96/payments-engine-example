@@ -2,6 +2,7 @@ use crate::record;
 use crate::types::{Chargeback, Deposit, Dispute, Resolve, Withdrawal};
 use crate::types::{State, TransactionError, TransactionRecord, TransactionType};
 use crate::validate;
+use crate::currency::round_currency;
 
 fn handle_deposit(deposit: Deposit, state: &mut State) -> Result<(), TransactionError> {
     validate::validate_deposit(&deposit, state)?;
@@ -47,7 +48,7 @@ pub fn handle_transaction(
             let deposit = Deposit {
                 client_id,
                 tx_id,
-                amount,
+                amount: round_currency(amount),
             };
             handle_deposit(deposit, state)
         }
@@ -60,7 +61,7 @@ pub fn handle_transaction(
             let withdrawal = Withdrawal {
                 client_id,
                 tx_id,
-                amount,
+                amount: round_currency(amount),
             };
             handle_withdrawal(withdrawal, state)
         }
