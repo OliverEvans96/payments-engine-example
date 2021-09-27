@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::fs;
 use std::io;
 use std::path;
@@ -20,7 +19,7 @@ struct CliOpts {
     input_csv_path: path::PathBuf,
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() {
     // Allow log level to be set via env vars without recompiling
     env_logger::init();
 
@@ -28,20 +27,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Open file and process transactions, writing to stdout
     if let Ok(mut input_file) = fs::File::open(&opts.input_csv_path) {
-        // TODO: Handle errors
-        process_transactions(&mut input_file, &mut io::stdout())?;
+        process_transactions(&mut input_file, &mut io::stdout());
     } else {
         log::error!(
             "Could not open input file '{}'",
             &opts.input_csv_path.to_str().unwrap_or("<invalid path>")
         );
     }
-
-    // :)
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    // TODO: unit tests
 }

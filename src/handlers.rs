@@ -33,7 +33,10 @@ fn handle_chargeback(chargeback: Chargeback, state: &mut State) -> Result<(), Tr
     Ok(())
 }
 
-pub fn handle_transaction(record: TransactionRecord, state: &mut State) {
+pub fn handle_transaction(
+    record: TransactionRecord,
+    state: &mut State,
+) -> Result<(), TransactionError> {
     match record {
         TransactionRecord {
             transaction_type: TransactionType::Deposit,
@@ -46,8 +49,7 @@ pub fn handle_transaction(record: TransactionRecord, state: &mut State) {
                 tx_id,
                 amount,
             };
-            // TODO: Handle errors
-            handle_deposit(deposit, state);
+            handle_deposit(deposit, state)
         }
         TransactionRecord {
             transaction_type: TransactionType::Withdrawal,
@@ -60,7 +62,7 @@ pub fn handle_transaction(record: TransactionRecord, state: &mut State) {
                 tx_id,
                 amount,
             };
-            handle_withdrawal(withdrawal, state);
+            handle_withdrawal(withdrawal, state)
         }
         TransactionRecord {
             transaction_type: TransactionType::Dispute,
@@ -69,7 +71,7 @@ pub fn handle_transaction(record: TransactionRecord, state: &mut State) {
             amount: None,
         } => {
             let dispute = Dispute { client_id, tx_id };
-            handle_dispute(dispute, state);
+            handle_dispute(dispute, state)
         }
         TransactionRecord {
             transaction_type: TransactionType::Resolve,
@@ -78,7 +80,7 @@ pub fn handle_transaction(record: TransactionRecord, state: &mut State) {
             amount: None,
         } => {
             let resolve = Resolve { client_id, tx_id };
-            handle_resolve(resolve, state);
+            handle_resolve(resolve, state)
         }
         TransactionRecord {
             transaction_type: TransactionType::Chargeback,
@@ -87,11 +89,8 @@ pub fn handle_transaction(record: TransactionRecord, state: &mut State) {
             amount: None,
         } => {
             let chargeback = Chargeback { client_id, tx_id };
-            handle_chargeback(chargeback, state);
+            handle_chargeback(chargeback, state)
         }
-        _ => {
-            // TODO: Handle this
-            log::error!("invalid transaction")
-        }
+        _ => Err(TransactionError::ImproperTransaction(record)),
     }
 }

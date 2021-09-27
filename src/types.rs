@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::error::Error;
+use std::fmt::{Debug, Display};
 
 pub type ClientId = u16;
 pub type TransactionId = u32;
@@ -24,20 +26,49 @@ pub struct OutputRecord {
 #[derive(Debug, PartialEq)]
 pub enum TransactionError {
     InsufficientFunds {
-        required: CurrencyFloat,
-        actual: CurrencyFloat,
+        client: ClientId,
+        tx: TransactionId,
+        requested: CurrencyFloat,
+        available: CurrencyFloat,
     },
-    AccountLocked,
-    DuplicateTxId,
-    TxAlreadyDisputed,
-    TxDoesNotExist,
-    InvalidDispute,
-    TxNotDisputed,
+    AccountLocked {
+        client: ClientId,
+        tx: TransactionId,
+    },
+    DuplicateTxId {
+        tx: TransactionId,
+        // TODO: Reference transaction?
+    },
+    TxAlreadyDisputed {
+        client: ClientId,
+        tx: TransactionId,
+    },
+    TxDoesNotExist {
+        client: ClientId,
+        tx: TransactionId,
+    },
+    InvalidDispute {
+        // TODO: Reference transaction?
+        tx: TransactionId,
+    },
+    TxNotDisputed {
+        client: ClientId,
+        tx: TransactionId,
+    },
+    ImproperTransaction(TransactionRecord),
 }
+
+impl Display for TransactionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(&self, f)
+    }
+}
+
+impl Error for TransactionError {}
 
 // Transaction structs
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum TransactionType {
     Deposit,
@@ -49,7 +80,7 @@ pub enum TransactionType {
 
 // TODO: Make these all optional to avoid serde errors that would break input stream.
 // Instead, we should handle parsing errors asynchronously
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct TransactionRecord {
     #[serde(rename = "type")]
     pub transaction_type: TransactionType,
