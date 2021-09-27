@@ -37,7 +37,6 @@ pub enum TransactionError {
     },
     DuplicateTxId {
         tx: TransactionId,
-        // TODO: Reference transaction?
     },
     TxAlreadyDisputed {
         client: ClientId,
@@ -48,8 +47,8 @@ pub enum TransactionError {
         tx: TransactionId,
     },
     InvalidDispute {
-        // TODO: Reference transaction?
         tx: TransactionId,
+        tx_type: TransactionType
     },
     TxNotDisputed {
         client: ClientId,
@@ -127,9 +126,15 @@ pub struct Chargeback {
 pub enum TransactionContainer {
     Deposit(Result<Deposit, TransactionError>),
     Withdrawal(Result<Withdrawal, TransactionError>),
-    // Dispute(Result<Dispute, TransactionError>),
-    // Resolve(Result<Resolve, TransactionError>),
-    // Chargeback(Result<Chargeback, TransactionError>),
+}
+
+impl TransactionContainer {
+    pub fn tx_type(&self) -> TransactionType {
+        match &self {
+            TransactionContainer::Deposit(_) => TransactionType::Deposit,
+            TransactionContainer::Withdrawal(_) => TransactionType::Withdrawal,
+        }
+    }
 }
 
 // Internal state

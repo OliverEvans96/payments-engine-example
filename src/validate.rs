@@ -84,11 +84,15 @@ pub fn validate_dispute(dispute: &Dispute, state: &State) -> Result<(), Transact
     // Get disputed transaction from log
     if let Some(disputed_transaction) = state.transactions.get(&dispute.tx_id) {
         // NOTE: Only deposits may be disputed
-        if let TransactionContainer::Deposit(_) = disputed_transaction {
-            // TODO: Verify that disputed deposit actually succeeded
-            Ok(())
-        } else {
-            Err(TransactionError::InvalidDispute { tx: dispute.tx_id })
+        match disputed_transaction {
+            TransactionContainer::Deposit(_) => {
+                // TODO: Verify that disputed deposit actually succeeded
+                Ok(())
+            }
+            other => Err(TransactionError::InvalidDispute {
+                tx: dispute.tx_id,
+                tx_type: other.tx_type(),
+            }),
         }
     } else {
         Err(TransactionError::TxDoesNotExist {
