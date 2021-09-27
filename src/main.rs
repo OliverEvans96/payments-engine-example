@@ -95,9 +95,9 @@ struct Chargeback {
 enum TransactionContainer {
     Deposit(Result<Deposit, TransactionError>),
     Withdrawal(Result<Withdrawal, TransactionError>),
-    Dispute(Result<Dispute, TransactionError>),
-    Resolve(Result<Resolve, TransactionError>),
-    Chargeback(Result<Chargeback, TransactionError>),
+    // Dispute(Result<Dispute, TransactionError>),
+    // Resolve(Result<Resolve, TransactionError>),
+    // Chargeback(Result<Chargeback, TransactionError>),
 }
 
 // Internal state
@@ -209,6 +209,7 @@ fn validate_dispute(dispute: &Dispute, state: &State) -> Result<(), TransactionE
     if let Some(disputed_transaction) = state.transactions.get(&dispute.tx_id) {
         // NOTE: Only deposits may be disputed
         if let TransactionContainer::Deposit(_) = disputed_transaction {
+            // TODO: Verify that disputed deposit actually succeeded
             Ok(())
         } else {
             Err(TransactionError::InvalidDispute)
@@ -219,11 +220,27 @@ fn validate_dispute(dispute: &Dispute, state: &State) -> Result<(), TransactionE
 }
 
 fn validate_resolve(resolve: &Resolve, state: &State) -> Result<(), TransactionError> {
-    unimplemented!()
+    // NOTE: resolves do not have their own transaction id, they refer to a deposit or withdrawal
+    // NOTE: locked accounts are still allowed to resolve, just not deposit or withdraw
+
+    // NOTE: Cannot resolve an undisputed transaction
+    if state.active_disputes.contains(&resolve.tx_id) {
+        Ok(())
+    } else {
+        Err(TransactionError::TxNotDisputed)
+    }
 }
 
 fn validate_chargeback(chargeback: &Chargeback, state: &State) -> Result<(), TransactionError> {
-    unimplemented!()
+    // NOTE: chargebacks do not have their own transaction id, they refer to a deposit or withdrawal
+    // NOTE: locked accounts are still allowed to chargeback, just not deposit or withdraw
+
+    // NOTE: Cannot chargeback an undisputed transaction
+    if state.active_disputes.contains(&chargeback.tx_id) {
+        Ok(())
+    } else {
+        Err(TransactionError::TxNotDisputed)
+    }
 }
 
 // Balance modification
@@ -236,7 +253,7 @@ fn modify_balances_for_withdrawal(withdrawal: &Withdrawal, account: &mut Account
     account.available -= withdrawal.amount;
 }
 
-fn modify_balances_for_deposit_dispute(disputed_deposit: &Deposit, account: &mut Account) {
+fn modify_balances_for_dispute(disputed_deposit: &Deposit, account: &mut Account) {
     account.available -= disputed_deposit.amount;
     account.held += disputed_deposit.amount;
 }
@@ -290,17 +307,19 @@ fn record_withdrawal(withdrawal: Withdrawal, state: &mut State) {
 
 // NOTE: Assuming dispute has already been validated
 fn record_dispute(dispute: Dispute, state: &mut State) {
-    // Valid disputes correspond to existing deposit transactions
     if let Some(TransactionContainer::Deposit(Ok(disputed_deposit))) =
         state.transactions.get(&dispute.tx_id)
     {
         // Get associated account
         if let Some(account) = state.accounts.get_mut(&dispute.client_id) {
-
-            modify_balances_for_deposit_dispute(disputed_deposit, account);
+            modify_balances_for_dispute(disputed_deposit, account);
 
             // Mark the transaction as actively disputed
-            state.active_disputes.insert(dispute.tx_id);
+            let success = state.active_disputes.insert(dispute.tx_id);
+
+            if !success {
+                log::warn!("Transaction {} has been doubly disputed", dispute.tx_id);
+            }
         } else {
             log::warn!(
                 "Attempted to record dispute for nonexistent account - did you forget to validate?"
@@ -311,12 +330,54 @@ fn record_dispute(dispute: Dispute, state: &mut State) {
     }
 }
 
-fn record_resolve(resolve: Resolve, state: &State) {
-    unimplemented!()
+fn record_resolve(resolve: Resolve, state: &mut State) {
+    if let Some(TransactionContainer::Deposit(Ok(disputed_deposit))) =
+        state.transactions.get(&resolve.tx_id)
+    {
+        // Get associated account
+        if let Some(account) = state.accounts.get_mut(&resolve.client_id) {
+            modify_balances_for_resolve(disputed_deposit, account);
+
+            // Mark the transaction as no longer disputed
+            let success = state.active_disputes.remove(&resolve.tx_id);
+
+            if !success {
+                // TODO: Avoid this
+                log::warn!("Transaction {} has been resolved, but it wasn't disputed", resolve.tx_id);
+            }
+        } else {
+            log::warn!(
+                "Attempted to record resolve for nonexistent account - did you forget to validate?"
+            );
+        }
+    } else {
+        log::warn!("Attempted to record invalid resolve - did you forget to validate?");
+    }
 }
 
-fn record_chargeback(chargeback: Chargeback, state: &State) {
-    unimplemented!()
+fn record_chargeback(chargeback: Chargeback, state: &mut State) {
+    if let Some(TransactionContainer::Deposit(Ok(disputed_deposit))) =
+        state.transactions.get(&chargeback.tx_id)
+    {
+        // Get associated account
+        if let Some(account) = state.accounts.get_mut(&chargeback.client_id) {
+            modify_balances_for_chargeback(disputed_deposit, account);
+
+            // Mark the transaction as no longer disputed
+            let success = state.active_disputes.remove(&chargeback.tx_id);
+
+            if !success {
+                // TODO: Avoid this
+                log::warn!("Transaction {} has been charged back, but it wasn't disputed", chargeback.tx_id);
+            }
+        } else {
+            log::warn!(
+            "Attempted to record chargeback for nonexistent account - did you forget to validate?"
+        );
+        }
+    } else {
+        log::warn!("Attempted to record invalid chargeback - did you forget to validate?");
+    }
 }
 
 fn handle_deposit(deposit: Deposit, state: &mut State) -> Result<(), TransactionError> {
@@ -362,6 +423,7 @@ fn handle_transaction(record: TransactionRecord, state: &mut State) {
                 tx_id,
                 amount,
             };
+            // TODO: Handle errors
             handle_deposit(deposit, state);
         }
         TransactionRecord {
