@@ -25,17 +25,17 @@ pub fn record_deposit(deposit: Deposit, state: &mut State) {
 
 // NOTE: Assuming transaction has already been validated
 pub fn record_withdrawal(withdrawal: Withdrawal, state: &mut State) {
-    // Since withdrawing from an account with no existing balance is invalid,
-    // we can assume that account already exists (and unwrap the option)
-    let account = state.accounts.get_mut(&withdrawal.client_id).unwrap();
+    if let Some(account) = state.accounts.get_mut(&withdrawal.client_id) {
+        balances::modify_balances_for_withdrawal(&withdrawal, account);
 
-    balances::modify_balances_for_withdrawal(&withdrawal, account);
-
-    // Log transaction
-    state
-        .transactions
-        .entry(withdrawal.tx_id)
-        .or_insert(TransactionContainer::Withdrawal(Ok(withdrawal)));
+        // Log transaction
+        state
+            .transactions
+            .entry(withdrawal.tx_id)
+            .or_insert(TransactionContainer::Withdrawal(Ok(withdrawal)));
+    } else {
+        log::warn!("Attempted to withdraw from nonexistent account - did you forget to validate?")
+    }
 }
 
 // NOTE: Assuming dispute has already been validated
@@ -75,9 +75,8 @@ pub fn record_resolve(resolve: Resolve, state: &mut State) {
             let success = state.active_disputes.remove(&resolve.tx_id);
 
             if !success {
-                // TODO: Avoid this
                 log::warn!(
-                    "Transaction {} has been resolved, but it wasn't disputed",
+                    "Transaction {} has been resolved, but it wasn't disputed - did you forget to validate?",
                     resolve.tx_id
                 );
             }
@@ -106,9 +105,8 @@ pub fn record_chargeback(chargeback: Chargeback, state: &mut State) {
             account.locked = true;
 
             if !success {
-                // TODO: Avoid this
                 log::warn!(
-                    "Transaction {} has been charged back, but it wasn't disputed",
+                    "Transaction {} has been charged back, but it wasn't disputed - did you forget to validate?",
                     chargeback.tx_id
                 );
             }
