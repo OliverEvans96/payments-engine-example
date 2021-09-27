@@ -24,7 +24,7 @@ struct OutputRecord {
     locked: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum TransactionError {
     InsufficientFunds {
         required: CurrencyFloat,
@@ -63,39 +63,39 @@ struct TransactionRecord {
     amount: Option<CurrencyFloat>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct Deposit {
     client_id: ClientId,
     tx_id: TransactionId,
     amount: CurrencyFloat,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct Withdrawal {
     client_id: ClientId,
     tx_id: TransactionId,
     amount: CurrencyFloat,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct Dispute {
     client_id: ClientId,
     tx_id: TransactionId,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct Resolve {
     client_id: ClientId,
     tx_id: TransactionId,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct Chargeback {
     client_id: ClientId,
     tx_id: TransactionId,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum TransactionContainer {
     Deposit(Result<Deposit, TransactionError>),
     Withdrawal(Result<Withdrawal, TransactionError>),
@@ -106,7 +106,7 @@ enum TransactionContainer {
 
 // Internal state
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct Account {
     available: CurrencyFloat,
     held: CurrencyFloat,
@@ -126,7 +126,7 @@ impl Default for Account {
 
 // TODO: avoid locking whole state to read/write
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct State {
     accounts: HashMap<ClientId, Account>,
     // TODO: log disputes, resolutions, & chargebacks?
@@ -483,8 +483,8 @@ fn handle_transaction(record: TransactionRecord, state: &mut State) {
     }
 }
 
-fn report_balances(state: &State) {
-    let mut writer = csv::Writer::from_writer(io::stdout());
+fn report_balances<W: io::Write>(state: &State, output_stream: W) {
+    let mut writer = csv::Writer::from_writer(output_stream);
     for (&client_id, account) in state.accounts.iter() {
         let record = OutputRecord {
             client: client_id,
@@ -501,6 +501,10 @@ fn report_balances(state: &State) {
     if let Err(err) = writer.flush() {
         log::error!("error flusing serialized account balances: {}", err);
     }
+}
+
+fn process_transactions(input_stream: (), output_stream: ()) {
+    todo!()
 }
 
 // TODO: CL args
@@ -536,10 +540,94 @@ fn main() -> Result<(), Box<dyn Error>> {
             handle_transaction(record, &mut state);
         }
 
-        report_balances(&state);
+        report_balances(&state, io::stdout());
     } else {
         log::error!("Could not read from input file '{}'", input_csv_path);
     }
 
     Ok(())
+}
+
+mod tests {
+    use crate::{handle_transaction, report_balances};
+    use crate::{Account, State, TransactionContainer, TransactionRecord, TransactionType};
+    use crate::{ClientId, TransactionId};
+    use std::collections::{HashMap, HashSet};
+    use std::io;
+
+    fn run_test_scenario(
+        initial_state: State,
+        transactions: Vec<TransactionRecord>,
+        final_accounts: HashMap<ClientId, Account>,
+    ) {
+        let mut state = initial_state;
+        for transaction in transactions {
+            handle_transaction(transaction, &mut state);
+        }
+        assert_eq!(state.accounts, final_accounts);
+    }
+
+    #[test]
+    fn deposit_new_account() {
+        let initial_state = State::new();
+
+        let transactions = vec![TransactionRecord {
+            transaction_type: TransactionType::Deposit,
+            client_id: 1,
+            tx_id: 1,
+            amount: Some(5.0),
+        }];
+
+        let mut final_accounts = HashMap::new();
+        final_accounts.insert(
+            1,
+            Account {
+                available: 5.0,
+                held: 0.0,
+                locked: false,
+            },
+        );
+
+        run_test_scenario(
+            initial_state,
+            transactions,
+            final_accounts,
+        );
+    }
+
+    #[test]
+    fn deposit_existing_account() {
+        let mut initial_state = State::new();
+        initial_state.accounts.insert(
+            1,
+            Account {
+                available: 7.0,
+                held: 0.0,
+                locked: false,
+            },
+        );
+
+        let transactions = vec![TransactionRecord {
+            transaction_type: TransactionType::Deposit,
+            client_id: 1,
+            tx_id: 1,
+            amount: Some(5.0),
+        }];
+
+        let mut final_accounts = HashMap::new();
+        final_accounts.insert(
+            1,
+            Account {
+                available: 12.0,
+                held: 0.0,
+                locked: false,
+            },
+        );
+
+        run_test_scenario(
+            initial_state,
+            transactions,
+            final_accounts,
+        );
+    }
 }
