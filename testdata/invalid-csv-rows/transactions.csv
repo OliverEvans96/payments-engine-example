@@ -1,0 +1,15 @@
+type,client,tx,amount
+deposit,1,1,50
+
+WOAH
+deposit,2,2,200
+deposit,2,2,two hundred
+deposit,2,2
+withdrawal,1,3,15
+deposit,3,4,65.5
+withdrawal,3,5,20.0
+withdrawal,14,326,19,233,5,20.0
+deposit,2,6,2.5
+resolve,,,,2,6,2.5
+
+withdrawal,1,7,25
