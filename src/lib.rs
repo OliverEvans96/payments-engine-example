@@ -1,4 +1,4 @@
-mod balances;
+mod account;
 mod currency;
 mod handlers;
 mod record;
@@ -9,6 +9,15 @@ mod validate;
 use std::io;
 
 use types::{OutputRecord, State, TransactionRecord};
+
+// TODO: Test locked account
+// TODO: Test duplicate transaction id for valid first transaction
+// TODO: Test duplicate transaction id for invalid first transaction
+// TODO: Test unordered transaction ids
+// TODO: Test dispute referencing nonexistent transaction
+// TODO: Test resolve / chargeback referencing nonexistent transaction
+// TODO: Test resolve / chargeback referencing undisputed transaction
+// TODO: Test dispute / resolve / chargeback with client_id not matching referenced transaction
 
 pub fn process_transactions<R: io::Read, W: io::Write>(
     input_stream: &mut R,

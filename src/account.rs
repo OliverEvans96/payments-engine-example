@@ -1,4 +1,8 @@
-use crate::types::{Account, Deposit, Withdrawal};
+use crate::types::{Deposit, Withdrawal, Account};
+
+pub fn lock_account(account: &mut Account) {
+    account.locked = true;
+}
 
 pub fn modify_balances_for_deposit(deposit: &Deposit, account: &mut Account) {
     account.available += deposit.amount;

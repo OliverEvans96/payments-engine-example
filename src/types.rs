@@ -41,42 +41,50 @@ impl OutputRecord {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TransactionError {
+    /// Client attempted to withdraw more than their available funds.
     InsufficientFunds {
         client: ClientId,
         tx: TransactionId,
         requested: CurrencyFloat,
         available: CurrencyFloat,
     },
-    AccountLocked {
-        client: ClientId,
-        tx: TransactionId,
-    },
-    DuplicateTxId {
-        tx: TransactionId,
-    },
+    /// This account is locked, and cannot deposit or withdraw.
+    AccountLocked { client: ClientId, tx: TransactionId },
+    /// Transaction IDs must be globally unique.
+    DuplicateTxId { tx: TransactionId },
+    /// Deposits and withdrawals must have positive amounts.
     AmountNotPositive {
         tx: TransactionId,
         amount: CurrencyFloat,
     },
-    TxAlreadyDisputed {
-        client: ClientId,
-        tx: TransactionId,
-    },
-    TxDoesNotExist {
-        client: ClientId,
-        tx: TransactionId,
-    },
+    /// Cannot dispute an actively disputed transaction.
+    TxAlreadyDisputed { client: ClientId, tx: TransactionId },
+    /// Dispute refers to nonexistent transaction.
+    TxDoesNotExist { client: ClientId, tx: TransactionId },
+    /// Only deposits can be disputed.
     InvalidDispute {
         tx: TransactionId,
         tx_type: TransactionType,
     },
-    TxNotDisputed {
-        client: ClientId,
+    /// An undisputed transaction cannot
+    /// be resolved or charged back,
+    TxNotDisputed { client: ClientId, tx: TransactionId },
+    /// The disputed transaction didn't succeed,
+    /// so there's no point in disputing it.
+    DisputedTxFailed { tx: TransactionId },
+    /// This is an attempt to dispute a
+    /// transaction on another client's account,
+    DisputeClientMismatch {
         tx: TransactionId,
+        tx_client: ClientId,
+        dispute_client: ClientId,
     },
+    /// Transaction had unknown type or missing required fields.
     ImproperTransaction(TransactionRecord),
+    /// Didn't think we'd ever get here, but here we are.
+    UnexpectedError(String),
 }
 
 impl Display for TransactionError {
@@ -89,7 +97,7 @@ impl Error for TransactionError {}
 
 // Transaction structs
 
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum TransactionType {
     Deposit,
@@ -99,7 +107,7 @@ pub enum TransactionType {
     Chargeback,
 }
 
-#[derive(Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct TransactionRecord {
     #[serde(rename = "type")]
     pub transaction_type: TransactionType,
@@ -116,6 +124,15 @@ pub struct Deposit {
     pub tx_id: TransactionId,
     pub amount: CurrencyFloat,
 }
+impl Transaction for Deposit {
+    fn get_tx_id(&self) -> TransactionId {
+        self.tx_id
+    }
+
+    fn get_client_id(&self) -> ClientId {
+        self.client_id
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub struct Withdrawal {
@@ -123,11 +140,29 @@ pub struct Withdrawal {
     pub tx_id: TransactionId,
     pub amount: CurrencyFloat,
 }
+impl Transaction for Withdrawal {
+    fn get_tx_id(&self) -> TransactionId {
+        self.tx_id
+    }
+
+    fn get_client_id(&self) -> ClientId {
+        self.client_id
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub struct Dispute {
     pub client_id: ClientId,
     pub tx_id: TransactionId,
+}
+impl Transaction for Dispute {
+    fn get_tx_id(&self) -> TransactionId {
+        self.tx_id
+    }
+
+    fn get_client_id(&self) -> ClientId {
+        self.client_id
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -135,12 +170,42 @@ pub struct Resolve {
     pub client_id: ClientId,
     pub tx_id: TransactionId,
 }
+impl Transaction for Resolve {
+    fn get_tx_id(&self) -> TransactionId {
+        self.tx_id
+    }
+
+    fn get_client_id(&self) -> ClientId {
+        self.client_id
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub struct Chargeback {
     pub client_id: ClientId,
     pub tx_id: TransactionId,
 }
+
+impl Transaction for Chargeback {
+    fn get_tx_id(&self) -> TransactionId {
+        self.tx_id
+    }
+
+    fn get_client_id(&self) -> ClientId {
+        self.client_id
+    }
+}
+
+pub trait Transaction {
+    fn get_tx_id(&self) -> TransactionId;
+    fn get_client_id(&self) -> ClientId;
+}
+
+/// This transaction must follow a dispute with the same tx_id and client_id
+pub trait PostDispute: Transaction {}
+
+impl PostDispute for Resolve {}
+impl PostDispute for Chargeback {}
 
 #[derive(Debug, PartialEq)]
 pub enum TransactionContainer {
