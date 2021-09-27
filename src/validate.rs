@@ -1,3 +1,4 @@
+use crate::currency::CurrencyFloat;
 use crate::types::State;
 use crate::types::TransactionId;
 use crate::types::{Chargeback, Deposit, Dispute, Resolve, Withdrawal};
@@ -15,8 +16,20 @@ fn check_for_duplicate_tx_id(tx_id: TransactionId, state: &State) -> Result<(), 
     }
 }
 
+fn check_for_positive_amount(
+    tx: TransactionId,
+    amount: CurrencyFloat,
+) -> Result<(), TransactionError> {
+    if amount > 0.0 {
+        Ok(())
+    } else {
+        Err(TransactionError::AmountNotPositive { tx, amount })
+    }
+}
+
 pub fn validate_deposit(deposit: &Deposit, state: &State) -> Result<(), TransactionError> {
     check_for_duplicate_tx_id(deposit.tx_id, state)?;
+    check_for_positive_amount(deposit.tx_id, deposit.amount)?;
 
     if let Some(account) = state.accounts.get(&deposit.client_id) {
         if account.locked {
@@ -34,6 +47,7 @@ pub fn validate_deposit(deposit: &Deposit, state: &State) -> Result<(), Transact
 
 pub fn validate_withdrawal(withdrawal: &Withdrawal, state: &State) -> Result<(), TransactionError> {
     check_for_duplicate_tx_id(withdrawal.tx_id, state)?;
+    check_for_positive_amount(withdrawal.tx_id, withdrawal.amount)?;
 
     if let Some(account) = state.accounts.get(&withdrawal.client_id) {
         if account.locked {
@@ -57,7 +71,6 @@ pub fn validate_withdrawal(withdrawal: &Withdrawal, state: &State) -> Result<(),
         }
     } else {
         // New accounts cannot withdraw
-        // TODO: This would be a weird error for a 0-amount withdrawal
         return Err(TransactionError::InsufficientFunds {
             client: withdrawal.client_id,
             tx: withdrawal.tx_id,

@@ -56,6 +56,10 @@ pub enum TransactionError {
     DuplicateTxId {
         tx: TransactionId,
     },
+    AmountNotPositive {
+        tx: TransactionId,
+        amount: CurrencyFloat,
+    },
     TxAlreadyDisputed {
         client: ClientId,
         tx: TransactionId,
@@ -95,8 +99,6 @@ pub enum TransactionType {
     Chargeback,
 }
 
-// TODO: Make these all optional to avoid serde errors that would break input stream.
-// Instead, we should handle parsing errors asynchronously
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct TransactionRecord {
     #[serde(rename = "type")]
