@@ -562,13 +562,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+#[cfg(test)]
 mod tests {
-    use crate::{handle_transaction, process_transactions, report_balances};
-    use crate::{
-        Account, OutputRecord, State, TransactionContainer, TransactionRecord, TransactionType,
-    };
-    use crate::{ClientId, TransactionId};
-    use std::collections::{HashMap, HashSet};
+    use crate::ClientId;
+    use crate::{handle_transaction, process_transactions};
+    use crate::{Account, OutputRecord, State, TransactionRecord, TransactionType};
+    use std::collections::HashMap;
     use std::error::Error;
     use std::fs;
     use std::io;
