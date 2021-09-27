@@ -29,7 +29,7 @@ pub fn process_transactions<R: io::Read, W: io::Write>(
         handlers::handle_transaction(record, &mut state);
     }
 
-    output::report_balances(&state, output_stream);
+    output::write_balances(&state, output_stream);
 
     Ok(())
 }
