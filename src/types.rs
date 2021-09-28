@@ -210,14 +210,26 @@ pub trait Transaction {
     fn get_client_id(&self) -> ClientId;
 }
 
+/// This trait indicates whether and how a transaction can be disputed.
+/// To enable new types of transactions to be disputed, implement this
+/// trait for that type, and update TransactionContainer::try_get_disputable.
 pub trait Disputable: Transaction {
-    fn get_amount(&self) -> CurrencyFloat;
+    fn modify_balances_for_dispute(&self, account: &mut Account);
+    fn modify_balances_for_resolve(&self, account: &mut Account);
+    fn modify_balances_for_chargeback(&self, account: &mut Account);
 }
 
 impl Disputable for Deposit {
-    #[inline]
-    fn get_amount(&self) -> CurrencyFloat {
-        self.amount
+    fn modify_balances_for_dispute(&self, account: &mut Account) {
+        account.available -= self.amount;
+        account.held += self.amount;
+    }
+    fn modify_balances_for_resolve(&self, account: &mut Account) {
+        account.available += self.amount;
+        account.held -= self.amount;
+    }
+    fn modify_balances_for_chargeback(&self, account: &mut Account) {
+        account.held -= self.amount;
     }
 }
 
@@ -241,12 +253,13 @@ impl TransactionContainer {
         }
     }
 
-    pub fn try_get_disputable(&self) -> Result<&Result<impl Disputable, TransactionError>, TransactionType> {
+    pub fn try_get_disputable(
+        &self,
+    ) -> Result<&Result<impl Disputable, TransactionError>, TransactionType> {
         match self {
             // NOTE: Only deposits may be disputed
             TransactionContainer::Deposit(result) => Ok(result),
-            other => Err(other.tx_type())
-
+            other => Err(other.tx_type()),
         }
     }
 }

@@ -109,7 +109,7 @@ pub fn validate_dispute<'a, 't, 'd>(
     // Get disputed transaction from log
     if let Some(disputed_tx_container) = transactions.get(dispute.tx_id) {
         match disputed_tx_container.try_get_disputable() {
-            // Transaction is disputable and initially succeeded
+            // Transaction is of a disputable type and initially succeeded
             Ok(Ok(disputed_tx)) => {
                 let client_id = disputed_tx.get_client_id();
                 // NOTE: Only deposits may be disputed
@@ -138,12 +138,12 @@ pub fn validate_dispute<'a, 't, 'd>(
                     }
                 }
             }
-            // Transaction is disputable but initially failed
+            // Transaction is of a disputable type but initially failed
             Ok(Err(_)) => {
                 // NOTE: Cannot dispute a transaction that didn't succeed in the first place
                 Err(TransactionError::DisputedTxFailed { tx: dispute.tx_id })
             }
-            // Transaction is not disputable - its type is returned
+            // Transaction is not of a disputable type - its type is returned
             Err(tx_type) => Err(TransactionError::InvalidDispute {
                 tx: dispute.tx_id,
                 tx_type,
