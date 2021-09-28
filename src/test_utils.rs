@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use crate::handlers::handle_transaction;
-use crate::types::{Account, ClientId, State, TransactionError, TransactionRecord};
+use crate::state::{State,AccountsState};
+use crate::types::{Account, ClientId, TransactionError, TransactionRecord};
 
 pub fn run_test_scenario(
     initial_state: State,
@@ -12,7 +13,10 @@ pub fn run_test_scenario(
     for transaction in transactions {
         handle_transaction(transaction, &mut state)?;
     }
-    assert_eq!(state.accounts, final_accounts);
+
+    let final_accounts_state: AccountsState = final_accounts.into();
+
+    assert_eq!(final_accounts_state, state.accounts);
 
     Ok(())
 }

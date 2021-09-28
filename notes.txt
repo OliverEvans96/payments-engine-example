@@ -1,0 +1,2 @@
+Invariants enforced by type system:
+Accounts Locked / Unlocked

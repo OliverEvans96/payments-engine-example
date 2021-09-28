@@ -1,17 +1,15 @@
-use crate::account::{AccountAccess, UnlockedAccount};
+use crate::account::{AccountAccess};
 use crate::account::{BaseAccountFeatures, UnlockedAccountFeatures};
 use crate::currency::CurrencyFloat;
-use crate::state::State;
-use crate::types::Account;
+use crate::state::{AccountsState, TransactionsState, DisputesState};
 use crate::types::TransactionId;
 use crate::types::{Deposit, Dispute, PostDispute, Withdrawal};
 use crate::types::{TransactionContainer, TransactionError};
 
-fn check_for_duplicate_tx_id(tx_id: TransactionId, state: &State) -> Result<(), TransactionError> {
+fn check_for_duplicate_tx_id(tx_id: TransactionId, transactions: &TransactionsState) -> Result<(), TransactionError> {
     // NOTE: discarding duplicate transactions
     // TODO: Efficiently record duplicate transactions?
-
-    if let Some(_tx) = state.transactions.get(&tx_id) {
+    if let Some(_) = transactions.get(tx_id) {
         // Duplicate transactions are a bad sign
         Err(TransactionError::DuplicateTxId { tx: tx_id })
     } else {
@@ -33,14 +31,15 @@ fn check_for_positive_amount(
 
 /// If the transaction is valid, return the transaction and a &mut to the associated account.
 /// Otherwise, return an Err(TransactionError).
-pub fn validate_deposit<'a>(
+pub fn validate_deposit<'a, 't>(
     deposit: Deposit,
-    state: &'a mut State,
+    accounts: &'a mut AccountsState,
+    transactions: &'t TransactionsState
 ) -> Result<(Deposit, impl UnlockedAccountFeatures + 'a), TransactionError> {
-    check_for_duplicate_tx_id(deposit.tx_id, state)?;
+    check_for_duplicate_tx_id(deposit.tx_id, transactions)?;
     check_for_positive_amount(deposit.tx_id, deposit.amount)?;
 
-    match state.get_mut_account_or_default(deposit.client_id) {
+    match accounts.get_mut_or_default(deposit.client_id) {
         AccountAccess::Unlocked(account) => Ok((deposit, account)),
         AccountAccess::Locked(_) => Err(TransactionError::AccountLocked {
             client: deposit.client_id,
@@ -49,14 +48,15 @@ pub fn validate_deposit<'a>(
     }
 }
 
-pub fn validate_withdrawal<'a>(
+pub fn validate_withdrawal<'a, 't>(
     withdrawal: Withdrawal,
-    state: &'a mut State,
+    accounts: &'a mut AccountsState,
+    transactions: &'t TransactionsState
 ) -> Result<(Withdrawal, impl UnlockedAccountFeatures + 'a), TransactionError> {
-    check_for_duplicate_tx_id(withdrawal.tx_id, state)?;
+    check_for_duplicate_tx_id(withdrawal.tx_id, transactions)?;
     check_for_positive_amount(withdrawal.tx_id, withdrawal.amount)?;
 
-    match state.get_mut_account(withdrawal.client_id) {
+    match accounts.get_mut(withdrawal.client_id) {
         // unlocked accounts can withdraw if they have enough funds
         Some(AccountAccess::Unlocked(account)) => {
             let view = account.view();
@@ -86,15 +86,17 @@ pub fn validate_withdrawal<'a>(
     }
 }
 
-pub fn validate_dispute<'a>(
+pub fn validate_dispute<'a, 't, 'd>(
     dispute: Dispute,
-    state: &'a mut State,
-) -> Result<(&Deposit, impl BaseAccountFeatures + 'a), TransactionError> {
+    accounts: &'a mut AccountsState,
+    transactions: &'t TransactionsState,
+    disputes: &'d DisputesState
+) -> Result<(&'t Deposit, impl BaseAccountFeatures + 'a), TransactionError> {
     // NOTE: disputes do not have their own transaction id, they refer to a deposit or withdrawal
     // NOTE: locked accounts are still allowed to dispute, just not deposit or withdraw
 
     // NOTE: Cannot dispute an actively disputed transaction
-    if state.active_disputes.contains(&dispute.tx_id) {
+    if disputes.is_disputed(dispute.tx_id) {
         return Err(TransactionError::TxAlreadyDisputed {
             client: dispute.client_id,
             tx: dispute.tx_id,
@@ -102,7 +104,8 @@ pub fn validate_dispute<'a>(
     }
 
     // Get disputed transaction from log
-    if let Some(disputed_transaction) = state.transactions.get(&dispute.tx_id) {
+
+    if let Some(disputed_transaction) = transactions.get(dispute.tx_id) {
         match disputed_transaction {
             // NOTE: Only deposits may be disputed
             TransactionContainer::Deposit(Ok(disputed_deposit)) => {
@@ -115,7 +118,7 @@ pub fn validate_dispute<'a>(
                     })
                 } else {
                     // Get access to the referenced account (don't need unlocked access here)
-                    match state.get_mut_account(dispute.client_id) {
+                    match accounts.get_mut(dispute.client_id) {
                         Some(access) => {
                             let account = access.inner();
                             Ok((disputed_deposit, account))
@@ -147,10 +150,13 @@ pub fn validate_dispute<'a>(
     }
 }
 
-pub fn validate_post_dispute<T: PostDispute>(
+/// Validation is the same for resolves and chargebacks
+pub fn validate_post_dispute<'a, 't, 'd, T: PostDispute>(
     t: T,
-    state: &mut State,
-) -> Result<(&Deposit, &mut Account), TransactionError> {
+    accounts: &'a mut AccountsState,
+    transactions: &'t TransactionsState,
+    disputes: &'d DisputesState
+) -> Result<(&'t Deposit, impl BaseAccountFeatures + 'a), TransactionError> {
     // NOTE: ts do not have their own transaction id, they refer to a deposit or withdrawal
     // NOTE: locked accounts are still allowed to t, just not deposit or withdraw
 
@@ -158,18 +164,18 @@ pub fn validate_post_dispute<T: PostDispute>(
     let client_id = t.get_client_id();
 
     // NOTE: Cannot t an undisputed transaction
-    if !state.active_disputes.contains(&tx_id) {
+    if !disputes.is_disputed(tx_id) {
         return Err(TransactionError::TxNotDisputed {
             client: client_id,
             tx: tx_id,
         });
     }
 
+
     // Get disputed transaction from log
-    if let Some(TransactionContainer::Deposit(Ok(disputed_deposit))) =
-        state.transactions.get_mut(&tx_id)
+    if let Some(TransactionContainer::Deposit(Ok(disputed_deposit))) = transactions.get(tx_id)
     {
-        // NOTE: t client_id must match disputed transaction client_id
+        // NOTE: client_id must match disputed transaction client_id
         if disputed_deposit.client_id != client_id {
             Err(TransactionError::DisputeClientMismatch {
                 tx: tx_id,
@@ -177,14 +183,18 @@ pub fn validate_post_dispute<T: PostDispute>(
                 dispute_client: client_id,
             })
         } else {
-            if let Some(account) = state.accounts.get_mut(&client_id) {
-                Ok((disputed_deposit, account))
-            } else {
-                // This should never happen, but catch it just in case
-                Err(TransactionError::UnexpectedError(format!(
-                    "Disputed transaction {} refers to nonexistent client {}",
-                    tx_id, client_id
-                )))
+            match accounts.get_mut(client_id) {
+                Some(access) => {
+                    let account = access.inner();
+                    Ok((disputed_deposit, account))
+                }
+                None => {
+                    // This should never happen, but catch it just in case
+                    Err(TransactionError::UnexpectedError(format!(
+                        "Disputed transaction {} refers to nonexistent client {}",
+                        tx_id, client_id
+                    )))
+                }
             }
         }
     } else {
