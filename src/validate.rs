@@ -2,8 +2,8 @@ use crate::account::AccountAccess;
 use crate::account::{BaseAccountFeatures, UnlockedAccountFeatures};
 use crate::currency::CurrencyFloat;
 use crate::state::{AccountsState, DisputesState, TransactionsState};
-use crate::types::TransactionId;
 use crate::types::{Deposit, Dispute, PostDispute, Withdrawal};
+use crate::types::{Disputable, Transaction, TransactionId};
 use crate::types::{TransactionContainer, TransactionError};
 
 fn check_for_duplicate_tx_id(
@@ -94,7 +94,7 @@ pub fn validate_dispute<'a, 't, 'd>(
     accounts: &'a mut AccountsState,
     transactions: &'t TransactionsState,
     disputes: &'d DisputesState,
-) -> Result<(&'t Deposit, Box<dyn BaseAccountFeatures + 'a>), TransactionError> {
+) -> Result<(&'t impl Disputable, Box<dyn BaseAccountFeatures + 'a>), TransactionError> {
     // NOTE: disputes do not have their own transaction id, they refer to a deposit or withdrawal
     // NOTE: locked accounts are still allowed to dispute, just not deposit or withdraw
 
@@ -107,16 +107,18 @@ pub fn validate_dispute<'a, 't, 'd>(
     }
 
     // Get disputed transaction from log
-
-    if let Some(disputed_transaction) = transactions.get(dispute.tx_id) {
-        match disputed_transaction {
-            // NOTE: Only deposits may be disputed
-            TransactionContainer::Deposit(Ok(disputed_deposit)) => {
+    if let Some(disputed_tx_container) = transactions.get(dispute.tx_id) {
+        match disputed_tx_container.try_get_disputable() {
+            // Transaction is disputable and initially succeeded
+            Ok(Ok(disputed_tx)) => {
+                let client_id = disputed_tx.get_client_id();
+                // NOTE: Only deposits may be disputed
+                // TransactionContainer::Deposit(Ok(disputed_tx)) => {
                 // NOTE: dispute client_id must match disputed transaction client_id
-                if disputed_deposit.client_id != dispute.client_id {
+                if client_id != dispute.client_id {
                     Err(TransactionError::DisputeClientMismatch {
                         tx: dispute.tx_id,
-                        tx_client: disputed_deposit.client_id,
+                        tx_client: client_id,
                         dispute_client: dispute.client_id,
                     })
                 } else {
@@ -124,7 +126,7 @@ pub fn validate_dispute<'a, 't, 'd>(
                     match accounts.get_mut(dispute.client_id) {
                         Some(access) => {
                             let account = access.inner();
-                            Ok((disputed_deposit, account))
+                            Ok((disputed_tx, account))
                         }
                         None => {
                             // This should never happen, but catch it just in case
@@ -136,13 +138,15 @@ pub fn validate_dispute<'a, 't, 'd>(
                     }
                 }
             }
-            TransactionContainer::Deposit(Err(_)) => {
+            // Transaction is disputable but initially failed
+            Ok(Err(_)) => {
                 // NOTE: Cannot dispute a transaction that didn't succeed in the first place
                 Err(TransactionError::DisputedTxFailed { tx: dispute.tx_id })
             }
-            other => Err(TransactionError::InvalidDispute {
+            // Transaction is not disputable - its type is returned
+            Err(tx_type) => Err(TransactionError::InvalidDispute {
                 tx: dispute.tx_id,
-                tx_type: other.tx_type(),
+                tx_type,
             }),
         }
     } else {
@@ -177,17 +181,17 @@ pub fn validate_post_dispute<'a, 't, 'd, T: PostDispute>(
     }
 
     // Get disputed transaction from log
-    if let Some(TransactionContainer::Deposit(Ok(disputed_deposit))) = transactions.get(tx_id) {
+    if let Some(TransactionContainer::Deposit(Ok(disputed_tx))) = transactions.get(tx_id) {
         // NOTE: client_id must match disputed transaction client_id
-        if disputed_deposit.client_id != client_id {
+        if disputed_tx.client_id != client_id {
             Err(TransactionError::DisputeClientMismatch {
                 tx: tx_id,
-                tx_client: disputed_deposit.client_id,
+                tx_client: disputed_tx.client_id,
                 dispute_client: client_id,
             })
         } else {
             match accounts.get_mut(client_id) {
-                Some(access) => Ok((disputed_deposit, access)),
+                Some(access) => Ok((disputed_tx, access)),
                 None => {
                     // This should never happen, but catch it just in case
                     Err(TransactionError::UnexpectedError(format!(

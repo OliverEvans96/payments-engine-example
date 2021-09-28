@@ -1,4 +1,4 @@
-use crate::types::{Account, Deposit, Withdrawal};
+use crate::types::{Account, Deposit, Withdrawal, Disputable};
 
 pub struct LockedAccount<'a>(&'a mut Account);
 pub struct UnlockedAccount<'a>(&'a mut Account);
@@ -44,19 +44,26 @@ impl<'a> private::WrapsAccount for UnlockedAccount<'a> {
 }
 
 pub trait BaseAccountFeatures: private::WrapsAccount {
-    fn modify_balances_for_dispute(&mut self, disputed_deposit: &Deposit) {
+    // Since we're using this trait as an object somewhere,
+    // these functions can only use dynamic dispatch.
+    // They can't be generic over traits.
+    // See https://doc.rust-lang.org/reference/items/traits.html#object-safety
+    fn modify_balances_for_dispute(&mut self, disputed_tx: &dyn Disputable) {
         let mut account = self.get_mut_account();
-        account.available -= disputed_deposit.amount;
-        account.held += disputed_deposit.amount;
+        let amount = disputed_tx.get_amount();
+        account.available -= amount;
+        account.held += amount;
     }
-    fn modify_balances_for_resolve(&mut self, disputed_deposit: &Deposit) {
+    fn modify_balances_for_resolve(&mut self, disputed_tx: &dyn Disputable) {
         let mut account = self.get_mut_account();
-        account.available += disputed_deposit.amount;
-        account.held -= disputed_deposit.amount;
+        let amount = disputed_tx.get_amount();
+        account.available += amount;
+        account.held -= amount;
     }
-    fn modify_balances_for_chargeback(&mut self, disputed_deposit: &Deposit) {
+    fn modify_balances_for_chargeback(&mut self, disputed_tx: &dyn Disputable) {
         let mut account = self.get_mut_account();
-        account.held -= disputed_deposit.amount;
+        let amount = disputed_tx.get_amount();
+        account.held -= amount;
     }
     fn view(&self) -> &Account {
         self.get_account()
