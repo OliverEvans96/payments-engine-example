@@ -1,6 +1,7 @@
 use crate::types::TransactionId;
 use crate::types::{Deposit, Withdrawal};
-use crate::types::{State, TransactionContainer, TransactionError};
+use crate::types::{TransactionContainer, TransactionError};
+use crate::state::State;
 
 /// Record a deposit, either valid or invalid, in the transaction log
 pub fn record_deposit_result(

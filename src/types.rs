@@ -241,23 +241,3 @@ impl Default for Account {
         }
     }
 }
-
-// TODO: avoid locking whole state to read/write
-
-#[derive(Debug, PartialEq)]
-pub struct State {
-    pub accounts: HashMap<ClientId, Account>,
-    // TODO: log disputes, resolutions, & chargebacks?
-    pub transactions: HashMap<TransactionId, TransactionContainer>,
-    pub active_disputes: HashSet<TransactionId>,
-}
-
-impl State {
-    pub fn new() -> Self {
-        Self {
-            accounts: HashMap::new(),
-            transactions: HashMap::new(),
-            active_disputes: HashSet::new(),
-        }
-    }
-}
