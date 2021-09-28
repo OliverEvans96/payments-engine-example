@@ -1,20 +1,24 @@
-use crate::account;
+use crate::account::{BaseAccountFeatures, UnlockedAccountFeatures};
 use crate::currency::round_currency;
-use crate::record;
+use crate::state::State;
 use crate::types::{Chargeback, Deposit, Dispute, Resolve, Withdrawal};
-use crate::types::{State, TransactionError, TransactionRecord, TransactionType};
+use crate::types::{TransactionContainer, TransactionError, TransactionRecord, TransactionType};
 use crate::validate;
 
 fn handle_deposit(deposit: Deposit, state: &mut State) -> Result<(), TransactionError> {
     let tx_id = deposit.tx_id;
-    match validate::validate_deposit(deposit, state) {
-        Ok((valid_deposit, account)) => {
-            account::modify_balances_for_deposit(&valid_deposit, account);
-            record::record_deposit_result(tx_id, Ok(valid_deposit), state);
+    match validate::validate_deposit(deposit, &mut state.accounts, &state.transactions) {
+        Ok((valid_deposit, mut account)) => {
+            account.modify_balances_for_deposit(&valid_deposit);
+            state
+                .transactions
+                .insert(tx_id, TransactionContainer::Deposit(Ok(valid_deposit)));
             Ok(())
         }
         Err(err) => {
-            record::record_deposit_result(tx_id, Err(err.clone()), state);
+            state
+                .transactions
+                .insert(tx_id, TransactionContainer::Deposit(Err(err.clone())));
             Err(err)
         }
     }
@@ -22,14 +26,19 @@ fn handle_deposit(deposit: Deposit, state: &mut State) -> Result<(), Transaction
 
 fn handle_withdrawal(withdrawal: Withdrawal, state: &mut State) -> Result<(), TransactionError> {
     let tx_id = withdrawal.tx_id;
-    match validate::validate_withdrawal(withdrawal, state) {
-        Ok((valid_withdrawal, account)) => {
-            account::modify_balances_for_withdrawal(&valid_withdrawal, account);
-            record::record_withdrawal_result(tx_id, Ok(valid_withdrawal), state);
+    match validate::validate_withdrawal(withdrawal, &mut state.accounts, &state.transactions) {
+        Ok((valid_withdrawal, mut account)) => {
+            account.modify_balances_for_withdrawal(&valid_withdrawal);
+            state.transactions.insert(
+                tx_id,
+                TransactionContainer::Withdrawal(Ok(valid_withdrawal)),
+            );
             Ok(())
         }
         Err(err) => {
-            record::record_withdrawal_result(tx_id, Err(err.clone()), state);
+            state
+                .transactions
+                .insert(tx_id, TransactionContainer::Withdrawal(Err(err.clone())));
             Err(err)
         }
     }
@@ -37,10 +46,15 @@ fn handle_withdrawal(withdrawal: Withdrawal, state: &mut State) -> Result<(), Tr
 
 fn handle_dispute(dispute: Dispute, state: &mut State) -> Result<(), TransactionError> {
     let tx_id = dispute.tx_id;
-    match validate::validate_dispute(dispute, state) {
-        Ok((disputed_deposit, account)) => {
-            account::modify_balances_for_dispute(disputed_deposit, account);
-            record::dispute_transaction(tx_id, state);
+    match validate::validate_dispute(
+        dispute,
+        &mut state.accounts,
+        &state.transactions,
+        &state.disputes,
+    ) {
+        Ok((disputed_deposit, mut account)) => {
+            account.modify_balances_for_dispute(disputed_deposit);
+            state.disputes.dispute_tx(tx_id);
             Ok(())
         }
         Err(err) => Err(err),
@@ -49,10 +63,15 @@ fn handle_dispute(dispute: Dispute, state: &mut State) -> Result<(), Transaction
 
 fn handle_resolve(resolve: Resolve, state: &mut State) -> Result<(), TransactionError> {
     let tx_id = resolve.tx_id;
-    match validate::validate_post_dispute(resolve, state) {
-        Ok((disputed_deposit, account)) => {
-            account::modify_balances_for_resolve(disputed_deposit, account);
-            record::undispute_transaction(tx_id, state);
+    match validate::validate_post_dispute(
+        resolve,
+        &mut state.accounts,
+        &state.transactions,
+        &state.disputes,
+    ) {
+        Ok((disputed_deposit, mut account)) => {
+            account.modify_balances_for_resolve(disputed_deposit);
+            state.disputes.undispute_tx(tx_id);
             Ok(())
         }
         Err(err) => Err(err),
@@ -61,11 +80,18 @@ fn handle_resolve(resolve: Resolve, state: &mut State) -> Result<(), Transaction
 
 fn handle_chargeback(chargeback: Chargeback, state: &mut State) -> Result<(), TransactionError> {
     let tx_id = chargeback.tx_id;
-    match validate::validate_post_dispute(chargeback, state) {
-        Ok((disputed_deposit, account)) => {
-            account::modify_balances_for_chargeback(disputed_deposit, account);
-            account::lock_account(account);
-            record::undispute_transaction(tx_id, state);
+    match validate::validate_post_dispute(
+        chargeback,
+        &mut state.accounts,
+        &state.transactions,
+        &state.disputes,
+    ) {
+        Ok((disputed_deposit, mut account)) => {
+            account.modify_balances_for_chargeback(disputed_deposit);
+            // TODO: Prohibit locking locked accounts
+            // and get this to work
+            account.lock();
+            state.disputes.undispute_tx(tx_id);
             Ok(())
         }
         Err(err) => Err(err),

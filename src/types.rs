@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt::{Debug, Display};
 
@@ -238,26 +237,6 @@ impl Default for Account {
             available: 0.0,
             held: 0.0,
             locked: false,
-        }
-    }
-}
-
-// TODO: avoid locking whole state to read/write
-
-#[derive(Debug, PartialEq)]
-pub struct State {
-    pub accounts: HashMap<ClientId, Account>,
-    // TODO: log disputes, resolutions, & chargebacks?
-    pub transactions: HashMap<TransactionId, TransactionContainer>,
-    pub active_disputes: HashSet<TransactionId>,
-}
-
-impl State {
-    pub fn new() -> Self {
-        Self {
-            accounts: HashMap::new(),
-            transactions: HashMap::new(),
-            active_disputes: HashSet::new(),
         }
     }
 }

@@ -1,14 +1,15 @@
 mod account;
 mod currency;
 mod handlers;
-mod record;
+pub mod state;
 pub mod test_utils;
 pub mod types;
 mod validate;
 
 use std::io;
 
-use types::{OutputRecord, State, TransactionRecord};
+use state::State;
+use types::{OutputRecord, TransactionRecord};
 
 // TODO: Test locked account
 // TODO: Test duplicate transaction id for valid first transaction
@@ -44,10 +45,10 @@ pub fn process_transactions<R: io::Read, W: io::Write>(
         }
     }
 
-    write_balances(&state, output_stream);
+    write_balances(state, output_stream);
 }
 
-pub fn write_balances<W: io::Write>(state: &State, output_stream: W) {
+pub fn write_balances<W: io::Write>(state: State, output_stream: W) {
     let mut writer = csv::Writer::from_writer(output_stream);
     for (&client_id, account) in state.accounts.iter() {
         let record = OutputRecord::new(client_id, account);
