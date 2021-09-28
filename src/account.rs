@@ -124,11 +124,17 @@ impl<'a> AccountAccess<'a> {
 }
 
 impl<'a> private::WrapsAccount<'a, &'a Account, &'a mut Account> for AccountAccess<'a> {
-    fn get_account(&self) -> &'a Account {
-        self.inner().get_account()
+    fn get_account(&'a self) -> &'a Account {
+        match self {
+            AccountAccess::Locked(account) => account.get_account(),
+            AccountAccess::Unlocked(account) => account.get_account(),
+        }
     }
-    fn get_mut_account(&mut self) -> &'a mut Account {
-        self.inner().get_mut_account()
+    fn get_mut_account(&'a mut self) -> &'a mut Account {
+        match self {
+            AccountAccess::Locked(account) => account.get_mut_account(),
+            AccountAccess::Unlocked(account) => account.get_mut_account(),
+        }
     }
 }
 
