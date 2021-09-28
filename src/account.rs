@@ -3,18 +3,6 @@ use crate::types::{Account, Deposit, Withdrawal};
 pub struct LockedAccount<'a>(&'a mut Account);
 pub struct UnlockedAccount<'a>(&'a mut Account);
 
-// impl<'a> UnlockedAccount<'a> {
-//     /// Consumes the current access object and returns
-//     /// an access with downgraded permissions.
-//     /// NOTE: This doesn't actually lock the account,
-//     /// and only affects this access instance,
-//     /// not the account itself.
-//     fn downgrade(self) -> LockedAccount<'a> {
-//         LockedAccount(self.0)
-//     }
-//     // TODO: Rethink this
-// }
-
 mod private {
     // A bit hacky, but this is a workaround to avoid exposing
     // WrapsAccount publicly (since we don't want to grant
