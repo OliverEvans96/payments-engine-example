@@ -1,4 +1,6 @@
-use crate::account::{BaseAccountFeatures, UnlockedAccountFeatures};
+use crate::account::{
+    AccountAccess, BaseAccountFeatures, UnlockedAccountFeatures,
+};
 use crate::currency::round_currency;
 use crate::state::State;
 use crate::types::{Chargeback, Deposit, Dispute, Resolve, Withdrawal};
@@ -69,8 +71,8 @@ fn handle_resolve(resolve: Resolve, state: &mut State) -> Result<(), Transaction
         &state.transactions,
         &state.disputes,
     ) {
-        Ok((disputed_deposit, mut account)) => {
-            account.modify_balances_for_resolve(disputed_deposit);
+        Ok((disputed_deposit, mut access)) => {
+            access.modify_balances_for_resolve(disputed_deposit);
             state.disputes.undispute_tx(tx_id);
             Ok(())
         }
@@ -86,11 +88,11 @@ fn handle_chargeback(chargeback: Chargeback, state: &mut State) -> Result<(), Tr
         &state.transactions,
         &state.disputes,
     ) {
-        Ok((disputed_deposit, mut account)) => {
-            account.modify_balances_for_chargeback(disputed_deposit);
-            // TODO: Prohibit locking locked accounts
-            // and get this to work
-            account.lock();
+        Ok((disputed_deposit, mut access)) => {
+            access.modify_balances_for_chargeback(disputed_deposit);
+            if let AccountAccess::Unlocked(account) = access {
+                account.lock();
+            }
             state.disputes.undispute_tx(tx_id);
             Ok(())
         }
