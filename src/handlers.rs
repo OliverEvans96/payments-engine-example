@@ -1,6 +1,4 @@
-use crate::account::{
-    AccountAccess, BaseAccountFeatures, UnlockedAccountFeatures,
-};
+use crate::account::{AccountAccess, BaseAccountFeatures, UnlockedAccountFeatures};
 use crate::currency::round_currency;
 use crate::state::State;
 use crate::types::{Chargeback, Deposit, Dispute, Resolve, Withdrawal};
@@ -90,7 +88,7 @@ fn handle_chargeback(chargeback: Chargeback, state: &mut State) -> Result<(), Tr
     ) {
         Ok((disputed_deposit, mut access)) => {
             access.modify_balances_for_chargeback(disputed_deposit);
-            if let AccountAccess::Unlocked(account) = access {
+            if let AccountAccess::Unlocked(mut account) = access {
                 account.lock();
             }
             state.disputes.undispute_tx(tx_id);

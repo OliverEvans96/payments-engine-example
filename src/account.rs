@@ -1,4 +1,3 @@
-use std::borrow::{Borrow,BorrowMut};
 use crate::types::{Account, Deposit, Withdrawal};
 
 pub struct LockedAccount<'a>(&'a mut Account);
@@ -17,7 +16,6 @@ pub struct UnlockedAccount<'a>(&'a mut Account);
 // }
 
 mod private {
-    use std::borrow::{Borrow, BorrowMut};
     // A bit hacky, but this is a workaround to avoid exposing
     // WrapsAccount publicly (since we don't want to grant
     // public access to the underlying account - that would
@@ -27,25 +25,13 @@ mod private {
     // in a public interface (BaseAccountFeatures)
     // See https://github.com/rust-lang/rust/issues/34537
     use super::Account;
-    pub trait WrapsAccount<'a, R: Borrow<Account> + 'a, M: BorrowMut<Account> + 'a> {
-        fn get_account(&'a self) -> R;
-        fn get_mut_account(&'a mut self) -> M;
+    pub trait WrapsAccount {
+        fn get_account(&self) -> &Account;
+        fn get_mut_account(&mut self) -> &mut Account;
     }
 }
 
-impl<'a> private::WrapsAccount<'a, &'a Account, &'a mut Account> for LockedAccount<'a> {
-    #[inline]
-    fn get_account(&'a self) -> &'a Account {
-        &self.0
-    }
-
-    #[inline]
-    fn get_mut_account(&mut self) -> &mut Account {
-        &mut self.0
-    }
-}
-
-impl<'a> private::WrapsAccount<'a, &'a Account, &'a mut Account> for UnlockedAccount<'a> {
+impl<'a> private::WrapsAccount for LockedAccount<'a> {
     #[inline]
     fn get_account(&self) -> &Account {
         &self.0
@@ -57,46 +43,53 @@ impl<'a> private::WrapsAccount<'a, &'a Account, &'a mut Account> for UnlockedAcc
     }
 }
 
-pub trait BaseAccountFeatures<'a, R: Borrow<Account> + 'a, M: BorrowMut<Account> + 'a>: private::WrapsAccount<'a, R, M> {
-    fn modify_balances_for_dispute(&'a mut self, disputed_deposit: &Deposit) {
-        let mut account = self.get_mut_account();
-        let ref_account: &mut Account = account.borrow_mut();
-        ref_account.available -= disputed_deposit.amount;
-        ref_account.held += disputed_deposit.amount;
+impl<'a> private::WrapsAccount for UnlockedAccount<'a> {
+    #[inline]
+    fn get_account(&self) -> &Account {
+        &self.0
     }
-    fn modify_balances_for_resolve(&'a mut self, disputed_deposit: &Deposit) {
-        let mut account = self.get_mut_account();
-        let ref_account: &mut Account = account.borrow_mut();
-        ref_account.available += disputed_deposit.amount;
-        ref_account.held -= disputed_deposit.amount;
+
+    #[inline]
+    fn get_mut_account(&mut self) -> &mut Account {
+        &mut self.0
     }
-    fn modify_balances_for_chargeback(&'a mut self, disputed_deposit: &Deposit) {
+}
+
+pub trait BaseAccountFeatures: private::WrapsAccount {
+    fn modify_balances_for_dispute(&mut self, disputed_deposit: &Deposit) {
         let mut account = self.get_mut_account();
-        let ref_account: &mut Account = account.borrow_mut();
-        ref_account.held -= disputed_deposit.amount;
+        account.available -= disputed_deposit.amount;
+        account.held += disputed_deposit.amount;
     }
-    fn view(&'a self) -> R {
+    fn modify_balances_for_resolve(&mut self, disputed_deposit: &Deposit) {
+        let mut account = self.get_mut_account();
+        account.available += disputed_deposit.amount;
+        account.held -= disputed_deposit.amount;
+    }
+    fn modify_balances_for_chargeback(&mut self, disputed_deposit: &Deposit) {
+        let mut account = self.get_mut_account();
+        account.held -= disputed_deposit.amount;
+    }
+    fn view(&self) -> &Account {
         self.get_account()
     }
 }
 
-pub trait UnlockedAccountFeatures<'a, R: Borrow<Account> + 'a, M: BorrowMut<Account> + 'a>:
-    private::WrapsAccount<'a, R, M>
-{
-    fn modify_balances_for_deposit(&'a mut self, deposit: &Deposit) {
-        self.get_mut_account().borrow_mut().available += deposit.amount;
+pub trait UnlockedAccountFeatures: private::WrapsAccount {
+    fn modify_balances_for_deposit(&mut self, deposit: &Deposit) {
+        self.get_mut_account().available += deposit.amount;
     }
-    fn modify_balances_for_withdrawal(&'a mut self, withdrawal: &Withdrawal) {
-        self.get_mut_account().borrow_mut().available -= withdrawal.amount;
+    fn modify_balances_for_withdrawal(&mut self, withdrawal: &Withdrawal) {
+        self.get_mut_account().available -= withdrawal.amount;
     }
-    fn lock(&'a mut self) {
-        self.get_mut_account().borrow_mut().locked = true;
+    fn lock(&mut self) {
+        self.get_mut_account().locked = true;
     }
 }
 
-impl<'a, > BaseAccountFeatures<'a, &'a Account, &'a mut Account> for LockedAccount<'a> {}
-impl<'a, > BaseAccountFeatures<'a, &'a Account, &'a mut Account> for UnlockedAccount<'a> {}
-impl<'a, > UnlockedAccountFeatures<'a, &'a Account, &'a mut Account> for UnlockedAccount<'a> {}
+impl<'a> BaseAccountFeatures for LockedAccount<'a> {}
+impl<'a> BaseAccountFeatures for UnlockedAccount<'a> {}
+impl<'a> UnlockedAccountFeatures for UnlockedAccount<'a> {}
 
 impl Account {
     pub fn access<'a>(&'a mut self) -> AccountAccess<'a> {
@@ -115,7 +108,7 @@ pub enum AccountAccess<'a> {
 impl<'a> AccountAccess<'a> {
     /// Consume the access and return a reference to the contained
     /// account wrapper, providing only the base account features.
-    pub fn inner(self) -> Box<dyn BaseAccountFeatures<'a, &'a Account, &'a mut Account> + 'a> {
+    pub fn inner(self) -> Box<dyn BaseAccountFeatures + 'a> {
         match self {
             AccountAccess::Locked(account) => Box::new(account),
             AccountAccess::Unlocked(account) => Box::new(account),
@@ -123,14 +116,14 @@ impl<'a> AccountAccess<'a> {
     }
 }
 
-impl<'a> private::WrapsAccount<'a, &'a Account, &'a mut Account> for AccountAccess<'a> {
-    fn get_account(&'a self) -> &'a Account {
+impl<'a> private::WrapsAccount for AccountAccess<'a> {
+    fn get_account(&self) -> &Account {
         match self {
             AccountAccess::Locked(account) => account.get_account(),
             AccountAccess::Unlocked(account) => account.get_account(),
         }
     }
-    fn get_mut_account(&'a mut self) -> &'a mut Account {
+    fn get_mut_account(&mut self) -> &mut Account {
         match self {
             AccountAccess::Locked(account) => account.get_mut_account(),
             AccountAccess::Unlocked(account) => account.get_mut_account(),
@@ -138,4 +131,4 @@ impl<'a> private::WrapsAccount<'a, &'a Account, &'a mut Account> for AccountAcce
     }
 }
 
-impl<'a> BaseAccountFeatures<'a, &'a Account, &'a mut Account> for AccountAccess<'a> {}
+impl<'a> BaseAccountFeatures for AccountAccess<'a> {}

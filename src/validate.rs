@@ -2,7 +2,7 @@ use crate::account::AccountAccess;
 use crate::account::{BaseAccountFeatures, UnlockedAccountFeatures};
 use crate::currency::CurrencyFloat;
 use crate::state::{AccountsState, DisputesState, TransactionsState};
-use crate::types::{Account, TransactionId};
+use crate::types::TransactionId;
 use crate::types::{Deposit, Dispute, PostDispute, Withdrawal};
 use crate::types::{TransactionContainer, TransactionError};
 
@@ -38,7 +38,7 @@ pub fn validate_deposit<'a, 't>(
     deposit: Deposit,
     accounts: &'a mut AccountsState,
     transactions: &'t TransactionsState,
-) -> Result<(Deposit, impl UnlockedAccountFeatures<'a, &'a Account, &'a mut Account> + 'a), TransactionError> {
+) -> Result<(Deposit, impl UnlockedAccountFeatures + 'a), TransactionError> {
     check_for_duplicate_tx_id(deposit.tx_id, transactions)?;
     check_for_positive_amount(deposit.tx_id, deposit.amount)?;
 
@@ -55,7 +55,7 @@ pub fn validate_withdrawal<'a, 't>(
     withdrawal: Withdrawal,
     accounts: &'a mut AccountsState,
     transactions: &'t TransactionsState,
-) -> Result<(Withdrawal, impl UnlockedAccountFeatures<'a, &'a Account, &'a mut Account> + 'a), TransactionError> {
+) -> Result<(Withdrawal, impl UnlockedAccountFeatures + 'a), TransactionError> {
     check_for_duplicate_tx_id(withdrawal.tx_id, transactions)?;
     check_for_positive_amount(withdrawal.tx_id, withdrawal.amount)?;
 
@@ -94,7 +94,7 @@ pub fn validate_dispute<'a, 't, 'd>(
     accounts: &'a mut AccountsState,
     transactions: &'t TransactionsState,
     disputes: &'d DisputesState,
-) -> Result<(&'t Deposit, Box<dyn BaseAccountFeatures<'a, &'a Account, &'a mut Account> + 'a>), TransactionError> {
+) -> Result<(&'t Deposit, Box<dyn BaseAccountFeatures + 'a>), TransactionError> {
     // NOTE: disputes do not have their own transaction id, they refer to a deposit or withdrawal
     // NOTE: locked accounts are still allowed to dispute, just not deposit or withdraw
 
