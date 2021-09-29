@@ -182,6 +182,14 @@ impl Iterator for TransactionGenerator {
             if self.tx_id > desired {
                 return None;
             }
+
+            // Log progress every 10%
+            let tenth = desired / 10;
+            let div = self.tx_id / tenth;
+            let rem = self.tx_id % tenth;
+            if rem == 0 {
+                log::info!("Generating transactions: {}% complete", 10 * div);
+            }
         }
 
         // NOTE: it's possible that all accounts are locked, all disputes are resolve,
