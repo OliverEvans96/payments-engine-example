@@ -1,3 +1,4 @@
+use rand::distributions::{Distribution, Standard};
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt::{Debug, Display};
@@ -106,6 +107,20 @@ pub enum TransactionType {
     Chargeback,
 }
 
+impl Distribution<TransactionType> for Standard {
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> TransactionType {
+        // Inspired by https://stackoverflow.com/a/58434531/4228052
+        let x: f32 = rng.gen();
+        match x {
+            x if x < 0.2 => TransactionType::Deposit,
+            x if x < 0.4 => TransactionType::Withdrawal,
+            x if x < 0.6 => TransactionType::Dispute,
+            x if x < 0.8 => TransactionType::Resolve,
+            _ => TransactionType::Chargeback,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct TransactionRecord {
     #[serde(rename = "type")]
@@ -117,7 +132,66 @@ pub struct TransactionRecord {
     pub amount: Option<CurrencyFloat>,
 }
 
-#[derive(Debug, PartialEq)]
+// Convert from individual transaction types
+// to TransactionRecord for the sake of
+// generating random valid transaction
+
+impl From<Deposit> for TransactionRecord {
+    fn from(t: Deposit) -> Self {
+        Self {
+            transaction_type: TransactionType::Deposit,
+            client_id: t.client_id,
+            tx_id: t.tx_id,
+            amount: Some(t.amount),
+        }
+    }
+}
+
+impl From<Withdrawal> for TransactionRecord {
+    fn from(t: Withdrawal) -> Self {
+        Self {
+            transaction_type: TransactionType::Withdrawal,
+            client_id: t.client_id,
+            tx_id: t.tx_id,
+            amount: Some(t.amount),
+        }
+    }
+}
+
+impl From<Dispute> for TransactionRecord {
+    fn from(t: Dispute) -> Self {
+        Self {
+            transaction_type: TransactionType::Dispute,
+            client_id: t.client_id,
+            tx_id: t.tx_id,
+            amount: None,
+        }
+    }
+}
+
+impl From<Resolve> for TransactionRecord {
+    fn from(t: Resolve) -> Self {
+        Self {
+            transaction_type: TransactionType::Resolve,
+            client_id: t.client_id,
+            tx_id: t.tx_id,
+            amount: None,
+        }
+    }
+}
+
+impl From<Chargeback> for TransactionRecord {
+    fn from(t: Chargeback) -> Self {
+        Self {
+            transaction_type: TransactionType::Chargeback,
+            client_id: t.client_id,
+            tx_id: t.tx_id,
+            amount: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Deposit {
     pub client_id: ClientId,
     pub tx_id: TransactionId,
@@ -135,7 +209,7 @@ impl Transaction for Deposit {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Withdrawal {
     pub client_id: ClientId,
     pub tx_id: TransactionId,
@@ -153,7 +227,7 @@ impl Transaction for Withdrawal {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Dispute {
     pub client_id: ClientId,
     pub tx_id: TransactionId,
@@ -170,7 +244,7 @@ impl Transaction for Dispute {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Resolve {
     pub client_id: ClientId,
     pub tx_id: TransactionId,
@@ -187,7 +261,7 @@ impl Transaction for Resolve {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Chargeback {
     pub client_id: ClientId,
     pub tx_id: TransactionId,
@@ -253,6 +327,9 @@ impl TransactionContainer {
         }
     }
 
+    /// Try to downcast the `TransactionContainer` to `impl Disputable`
+    /// NOTE: If more than Deposit is disputable,
+    /// this will have to change from `impl Disputable` to `Box<dyn Disputable>`.
     pub fn try_get_disputable(
         &self,
     ) -> Result<&Result<impl Disputable, TransactionError>, TransactionType> {
@@ -260,6 +337,18 @@ impl TransactionContainer {
             // NOTE: Only deposits may be disputed
             TransactionContainer::Deposit(result) => Ok(result),
             other => Err(other.tx_type()),
+        }
+    }
+
+    /// Downcast the TransactionContainer to `Box<dyn Transacion>`
+    pub fn get_transaction(&self) -> Result<Box<dyn Transaction>, TransactionError> {
+        match self {
+            TransactionContainer::Deposit(result) => {
+                result.clone().map(|t| Box::new(t) as Box<dyn Transaction>)
+            }
+            TransactionContainer::Withdrawal(result) => {
+                result.clone().map(|t| Box::new(t) as Box<dyn Transaction>)
+            }
         }
     }
 }

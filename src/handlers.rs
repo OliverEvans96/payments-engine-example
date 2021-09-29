@@ -6,6 +6,7 @@ use crate::types::{TransactionContainer, TransactionError, TransactionRecord, Tr
 use crate::validate;
 
 fn handle_deposit(deposit: Deposit, state: &mut State) -> Result<(), TransactionError> {
+    log::trace!("Handling {:?}", deposit);
     let tx_id = deposit.tx_id;
     match validate::validate_deposit(deposit, &mut state.accounts, &state.transactions) {
         Ok((valid_deposit, mut account)) => {
@@ -25,6 +26,7 @@ fn handle_deposit(deposit: Deposit, state: &mut State) -> Result<(), Transaction
 }
 
 fn handle_withdrawal(withdrawal: Withdrawal, state: &mut State) -> Result<(), TransactionError> {
+    log::trace!("Handling {:?}", withdrawal);
     let tx_id = withdrawal.tx_id;
     match validate::validate_withdrawal(withdrawal, &mut state.accounts, &state.transactions) {
         Ok((valid_withdrawal, mut account)) => {
@@ -45,6 +47,7 @@ fn handle_withdrawal(withdrawal: Withdrawal, state: &mut State) -> Result<(), Tr
 }
 
 fn handle_dispute(dispute: Dispute, state: &mut State) -> Result<(), TransactionError> {
+    log::trace!("Handling {:?}", dispute);
     let tx_id = dispute.tx_id;
     match validate::validate_dispute(
         dispute,
@@ -62,6 +65,7 @@ fn handle_dispute(dispute: Dispute, state: &mut State) -> Result<(), Transaction
 }
 
 fn handle_resolve(resolve: Resolve, state: &mut State) -> Result<(), TransactionError> {
+    log::trace!("Handling {:?}", resolve);
     let tx_id = resolve.tx_id;
     match validate::validate_post_dispute(
         resolve,
@@ -79,6 +83,7 @@ fn handle_resolve(resolve: Resolve, state: &mut State) -> Result<(), Transaction
 }
 
 fn handle_chargeback(chargeback: Chargeback, state: &mut State) -> Result<(), TransactionError> {
+    log::trace!("Handling {:?}", chargeback);
     let tx_id = chargeback.tx_id;
     match validate::validate_post_dispute(
         chargeback,

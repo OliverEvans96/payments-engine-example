@@ -66,6 +66,10 @@ impl TransactionsState {
         // NOTE: Discarding duplicate transactions silently
         self.0.entry(tx_id).or_insert(transaction);
     }
+
+    pub fn iter_unordered(&self) -> impl Iterator<Item=(&TransactionId, &TransactionContainer)> {
+        self.0.iter()
+    }
 }
 
 #[derive(Debug)]
