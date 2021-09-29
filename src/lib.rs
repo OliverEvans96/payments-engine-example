@@ -3,6 +3,7 @@ mod currency;
 mod handlers;
 pub mod state;
 pub mod test_utils;
+pub mod rand;
 pub mod types;
 mod validate;
 

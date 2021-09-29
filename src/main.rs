@@ -1,11 +1,11 @@
 use std::fs;
 use std::io;
-use rand::Rng;
+use std::process::exit;
 
-use payments_engine_example::types::TransactionRecord;
-use structopt::StructOpt;
 use payments_engine_example::process_transactions;
-use structopt::clap::SubCommand;
+use payments_engine_example::rand::generate_random_valid_transaction_sequence;
+use payments_engine_example::types::{ClientId, CurrencyFloat, TransactionId};
+use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -19,6 +19,7 @@ struct CliOpts {
     input_csv_path: String,
 
     /// Optional subcommands are not required
+    #[structopt(subcommand)]
     cmd: Option<Subcommand>,
 }
 
@@ -27,18 +28,22 @@ enum Subcommand {
     /// Generate random transaction data to feed to the engine
     GenerateTransactions {
         /// Number of transactions to generate.
-        /// Defaults to infinite (run until cancelled).
+        /// Defaults to infinite (run until cancelled)
         #[structopt(short, long)]
-        transactions: Option<u32>,
+        transactions: Option<TransactionId>,
 
         /// Maximum number of clients to generate transactions for.
         /// Client IDs will be between 1 and this number.
-        #[structopt(short, long)]
-        clients: Option<u32>,
+        #[structopt(short, long, default_value = "100")]
+        clients: ClientId,
+
+        /// Maximum amount for deposits.
+        #[structopt(short, long, default_value = "10000")]
+        amount: CurrencyFloat,
     },
 }
 
-fn handle_main_command(path: &str) {
+fn main_command(path: &str) {
     // Write to stdout
     let mut output = io::stdout();
 
@@ -55,22 +60,33 @@ fn handle_main_command(path: &str) {
     }
 }
 
-fn generate_transactions(number: Option<u32>) {
+fn generate_transactions(
+    num_tx: Option<TransactionId>,
+    max_client: ClientId,
+    max_amount: CurrencyFloat,
+) {
     // Write to stdout
-    let mut output = io::stdout();
-    let writer = csv::Writer::from_writer(output);
-    let rng = rand::thread_rng();
+    let output = io::stdout();
+    let mut writer = csv::Writer::from_writer(output);
 
-    if let Some(max) = number {
-        for _ in 0..max {
-            let record: TransactionRecord = rng.gen();
-            if let Err(err) = writer.serialize(record) {
-                log::error!("Error writing generated transaction: {}", err);
-            }
+    let seq = generate_random_valid_transaction_sequence(num_tx, max_client, max_amount);
+    let mut num_generated = 0;
+    for tx in seq {
+        if let Err(err) = writer.serialize(tx) {
+            log::error!("Error writing generated transaction: {}", err);
+        } else {
+            num_generated += 1;
         }
-    } else {
-        loop {
+    }
 
+    if let Some(desired) = num_tx {
+        if num_generated < desired {
+            log::error!(
+                "Only generated {} / {} transactions.",
+                num_generated,
+                desired
+            );
+            exit(1);
         }
     }
 }
@@ -84,9 +100,13 @@ fn main() {
 
     if let Some(subcommand) = opts.cmd {
         match subcommand {
-            SubCommand::GenerateTransactions { number } => generate_transactions(number),
+            Subcommand::GenerateTransactions {
+                clients,
+                transactions,
+                amount,
+            } => generate_transactions(transactions, clients, amount),
         }
     } else {
-        main_command(opts.input_csv_path)
+        main_command(&opts.input_csv_path)
     }
 }
