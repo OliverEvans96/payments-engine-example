@@ -25,7 +25,7 @@ struct CliOpts {
 
 #[derive(Debug, StructOpt)]
 enum Subcommand {
-    /// Generate random transaction data to feed to the engine
+    /// Generate a sequence of random valid transactions.
     GenerateTransactions {
         /// Number of transactions to generate.
         /// Defaults to infinite (run until cancelled)
@@ -39,7 +39,12 @@ enum Subcommand {
 
         /// Maximum amount for deposits.
         #[structopt(short, long, default_value = "10000")]
-        amount: CurrencyFloat,
+        deposit: CurrencyFloat,
+
+        /// Maximum number of times to attempt to generate
+        /// a new valid transaction before aborting
+        #[structopt(short, long, default_value = "10000")]
+        attempts: usize,
     },
 }
 
@@ -63,13 +68,14 @@ fn main_command(path: &str) {
 fn generate_transactions(
     num_tx: Option<TransactionId>,
     max_client: ClientId,
-    max_amount: CurrencyFloat,
+    max_deposit: CurrencyFloat,
+    max_attempts: usize,
 ) {
     // Write to stdout
     let output = io::stdout();
     let mut writer = csv::Writer::from_writer(output);
 
-    let seq = generate_random_valid_transaction_sequence(num_tx, max_client, max_amount);
+    let seq = generate_random_valid_transaction_sequence(num_tx, max_client, max_deposit, max_attempts);
     let mut num_generated = 0;
     for tx in seq {
         if let Err(err) = writer.serialize(tx) {
@@ -103,8 +109,9 @@ fn main() {
             Subcommand::GenerateTransactions {
                 clients,
                 transactions,
-                amount,
-            } => generate_transactions(transactions, clients, amount),
+                deposit,
+                attempts,
+            } => generate_transactions(transactions, clients, deposit, attempts),
         }
     } else {
         main_command(&opts.input_csv_path)

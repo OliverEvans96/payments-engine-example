@@ -11,17 +11,24 @@ struct TransactionGenerator {
     tx_id: TransactionId,
     num_tx: Option<TransactionId>,
     max_client: ClientId,
-    max_amount: CurrencyFloat,
+    max_deposit: CurrencyFloat,
+    max_attempts: usize,
 }
 
 impl TransactionGenerator {
-    fn new(num_tx: Option<TransactionId>, max_client: ClientId, max_amount: CurrencyFloat) -> Self {
+    fn new(
+        num_tx: Option<TransactionId>,
+        max_client: ClientId,
+        max_deposit: CurrencyFloat,
+        max_attempts: usize,
+    ) -> Self {
         Self {
             state: State::new(),
             tx_id: 1,
             num_tx,
             max_client,
-            max_amount,
+            max_deposit,
+            max_attempts,
         }
     }
 }
@@ -84,7 +91,7 @@ impl TransactionGenerator {
         let deposit = Deposit {
             client_id,
             tx_id: self.tx_id,
-            amount: rng.gen_range(0.0..self.max_amount),
+            amount: rng.gen_range(0.0..self.max_deposit),
         };
 
         Some(deposit.into())
@@ -173,8 +180,7 @@ impl Iterator for TransactionGenerator {
 
         // NOTE: it's possible that all accounts are locked, all disputes are resolve,
         // and no further transactions can be generated.
-        let max_tries = 10_000;
-        for _ in 0..max_tries {
+        for _ in 0..self.max_attempts {
             if let Some(tx) = self.generate_potential_transaction() {
                 handle_transaction(tx.clone(), &mut self.state)
                     .expect("Generated invalid transaction");
@@ -192,8 +198,9 @@ impl Iterator for TransactionGenerator {
 pub fn generate_random_valid_transaction_sequence(
     num_tx: Option<TransactionId>,
     max_client: ClientId,
-    max_amount: CurrencyFloat,
+    max_deposit: CurrencyFloat,
+    max_attempts: usize,
 ) -> impl Iterator<Item = TransactionRecord> {
-    let generator = TransactionGenerator::new(num_tx, max_client, max_amount);
+    let generator = TransactionGenerator::new(num_tx, max_client, max_deposit, max_attempts);
     generator.into_iter()
 }
