@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::error::Error;
+use rand::distributions::{Distribution,Standard};
 use std::fmt::{Debug, Display};
 
 use crate::currency::round_currency;
@@ -106,6 +107,20 @@ pub enum TransactionType {
     Chargeback,
 }
 
+impl Distribution<TransactionType> for Standard {
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> Standard {
+        // Inspired by https://stackoverflow.com/a/58434531/4228052
+        let x: f32 = rng.gen();
+        match x {
+            x if x < 0.2 => TransactionType::Deposit,
+            x if x < 0.4 => TransactionType::Withdrawal,
+            x if x < 0.6 => TransactionType::Dispute,
+            x if x < 0.8 => TransactionType::Resolve,
+            _ => TransactionType::Chargeback,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct TransactionRecord {
     #[serde(rename = "type")]
@@ -115,6 +130,32 @@ pub struct TransactionRecord {
     #[serde(rename = "tx")]
     pub tx_id: TransactionId,
     pub amount: Option<CurrencyFloat>,
+}
+
+/// Allow transaction records to be randomly generated
+impl Distribution<TransactionRecord> for Standard {
+    fn sample_iter<R>(self, rng: R) -> rand::distributions::DistIter<Self, R, TransactionRecord>
+    where
+            R: rand::Rng,
+            Self: Sized, {
+            let max_amount = 10_000;
+            let max_client = 100;
+
+        let transaction_type: TransactionType = rng.gen();
+        match transaction_type {
+            TransactionType::Deposit => Deposit {
+                tx_id:  0,
+                client_id: rng.gen_range(0..max_client),
+                amount: rng.gen_range(0..max_amount),
+            },
+            _ => Withdrawal {
+                tx_id:  0,
+                client_id: rng.gen_range(0..max_client),
+                amount: rng.gen_range(0..max_amount),
+            }
+        };
+        
+    }
 }
 
 #[derive(Debug, PartialEq)]
