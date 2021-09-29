@@ -1,10 +1,13 @@
 use rand::{thread_rng, Rng};
 
+use crate::currency::floor_currency;
 use crate::handlers::handle_transaction;
 use crate::state::State;
 use crate::types::{Chargeback, Deposit, Dispute, Resolve, TransactionContainer, Withdrawal};
 use crate::types::{ClientId, CurrencyFloat, TransactionId};
 use crate::types::{TransactionRecord, TransactionType};
+
+const MIN_AMOUNT: CurrencyFloat = 0.001;
 
 struct TransactionGenerator {
     state: State,
@@ -79,7 +82,7 @@ impl TransactionGenerator {
     }
 
     /// Generate a deposit for a random client if possible
-    fn generate_deposit(&mut self) -> Option<TransactionRecord> {
+    fn generate_deposit(&self) -> Option<TransactionRecord> {
         let mut rng = thread_rng();
         let client_id = self.get_client_id(&mut rng);
         if let Some(account) = self.state.accounts.get(client_id) {
@@ -91,22 +94,25 @@ impl TransactionGenerator {
         let deposit = Deposit {
             client_id,
             tx_id: self.tx_id,
-            amount: rng.gen_range(0.0..self.max_deposit),
+            amount: rng.gen_range(MIN_AMOUNT..self.max_deposit),
         };
 
         Some(deposit.into())
     }
 
     /// Generate a withdrawal for a random client if possible
-    fn generate_withdrawal(&mut self) -> Option<TransactionRecord> {
+    fn generate_withdrawal(&self) -> Option<TransactionRecord> {
         let mut rng = thread_rng();
         let client_id = self.get_client_id(&mut rng);
         if let Some(account) = self.state.accounts.get(client_id) {
-            if !account.locked && account.available > 0.0 {
+            if !account.locked && account.available > MIN_AMOUNT {
+                // Floor here to make sure amount doesn't exceed
+                // the available balance after rounding.
+                let max_amount = floor_currency(account.available);
                 let withdrawal = Withdrawal {
                     client_id,
                     tx_id: self.tx_id,
-                    amount: rng.gen_range(0.0..account.available),
+                    amount: rng.gen_range(MIN_AMOUNT..max_amount),
                 };
                 return Some(withdrawal.into());
             }
@@ -116,7 +122,7 @@ impl TransactionGenerator {
     }
 
     /// Generate a dispute for a random client if possible
-    fn generate_dispute(&mut self) -> Option<TransactionRecord> {
+    fn generate_dispute(&self) -> Option<TransactionRecord> {
         let mut rng = thread_rng();
         let client_id = self.get_client_id(&mut rng);
         if let Some(_) = self.state.accounts.get(client_id) {
@@ -171,8 +177,8 @@ impl Iterator for TransactionGenerator {
     type Item = TransactionRecord;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // Maybe break early
         if let Some(desired) = self.num_tx {
+            // Maybe break early
             if self.tx_id > desired {
                 return None;
             }
