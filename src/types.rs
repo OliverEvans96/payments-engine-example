@@ -124,10 +124,12 @@ pub struct Deposit {
     pub amount: CurrencyFloat,
 }
 impl Transaction for Deposit {
+    #[inline]
     fn get_tx_id(&self) -> TransactionId {
         self.tx_id
     }
 
+    #[inline]
     fn get_client_id(&self) -> ClientId {
         self.client_id
     }
@@ -140,10 +142,12 @@ pub struct Withdrawal {
     pub amount: CurrencyFloat,
 }
 impl Transaction for Withdrawal {
+    #[inline]
     fn get_tx_id(&self) -> TransactionId {
         self.tx_id
     }
 
+    #[inline]
     fn get_client_id(&self) -> ClientId {
         self.client_id
     }
@@ -155,10 +159,12 @@ pub struct Dispute {
     pub tx_id: TransactionId,
 }
 impl Transaction for Dispute {
+    #[inline]
     fn get_tx_id(&self) -> TransactionId {
         self.tx_id
     }
 
+    #[inline]
     fn get_client_id(&self) -> ClientId {
         self.client_id
     }
@@ -170,10 +176,12 @@ pub struct Resolve {
     pub tx_id: TransactionId,
 }
 impl Transaction for Resolve {
+    #[inline]
     fn get_tx_id(&self) -> TransactionId {
         self.tx_id
     }
 
+    #[inline]
     fn get_client_id(&self) -> ClientId {
         self.client_id
     }
@@ -186,10 +194,12 @@ pub struct Chargeback {
 }
 
 impl Transaction for Chargeback {
+    #[inline]
     fn get_tx_id(&self) -> TransactionId {
         self.tx_id
     }
 
+    #[inline]
     fn get_client_id(&self) -> ClientId {
         self.client_id
     }
@@ -198,6 +208,29 @@ impl Transaction for Chargeback {
 pub trait Transaction {
     fn get_tx_id(&self) -> TransactionId;
     fn get_client_id(&self) -> ClientId;
+}
+
+/// This trait indicates whether and how a transaction can be disputed.
+/// To enable new types of transactions to be disputed, implement this
+/// trait for that type, and update TransactionContainer::try_get_disputable.
+pub trait Disputable: Transaction {
+    fn modify_balances_for_dispute(&self, account: &mut Account);
+    fn modify_balances_for_resolve(&self, account: &mut Account);
+    fn modify_balances_for_chargeback(&self, account: &mut Account);
+}
+
+impl Disputable for Deposit {
+    fn modify_balances_for_dispute(&self, account: &mut Account) {
+        account.available -= self.amount;
+        account.held += self.amount;
+    }
+    fn modify_balances_for_resolve(&self, account: &mut Account) {
+        account.available += self.amount;
+        account.held -= self.amount;
+    }
+    fn modify_balances_for_chargeback(&self, account: &mut Account) {
+        account.held -= self.amount;
+    }
 }
 
 /// This transaction must follow a dispute with the same tx_id and client_id
@@ -217,6 +250,16 @@ impl TransactionContainer {
         match &self {
             TransactionContainer::Deposit(_) => TransactionType::Deposit,
             TransactionContainer::Withdrawal(_) => TransactionType::Withdrawal,
+        }
+    }
+
+    pub fn try_get_disputable(
+        &self,
+    ) -> Result<&Result<impl Disputable, TransactionError>, TransactionType> {
+        match self {
+            // NOTE: Only deposits may be disputed
+            TransactionContainer::Deposit(result) => Ok(result),
+            other => Err(other.tx_type()),
         }
     }
 }

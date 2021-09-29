@@ -52,8 +52,8 @@ fn handle_dispute(dispute: Dispute, state: &mut State) -> Result<(), Transaction
         &state.transactions,
         &state.disputes,
     ) {
-        Ok((disputed_deposit, mut account)) => {
-            account.modify_balances_for_dispute(disputed_deposit);
+        Ok((disputed_tx, mut account)) => {
+            account.modify_balances_for_dispute(disputed_tx);
             state.disputes.dispute_tx(tx_id);
             Ok(())
         }
@@ -69,8 +69,8 @@ fn handle_resolve(resolve: Resolve, state: &mut State) -> Result<(), Transaction
         &state.transactions,
         &state.disputes,
     ) {
-        Ok((disputed_deposit, mut access)) => {
-            access.modify_balances_for_resolve(disputed_deposit);
+        Ok((disputed_tx, mut access)) => {
+            access.modify_balances_for_resolve(disputed_tx);
             state.disputes.undispute_tx(tx_id);
             Ok(())
         }
@@ -86,8 +86,8 @@ fn handle_chargeback(chargeback: Chargeback, state: &mut State) -> Result<(), Tr
         &state.transactions,
         &state.disputes,
     ) {
-        Ok((disputed_deposit, mut access)) => {
-            access.modify_balances_for_chargeback(disputed_deposit);
+        Ok((disputed_tx, mut access)) => {
+            access.modify_balances_for_chargeback(disputed_tx);
             if let AccountAccess::Unlocked(mut account) = access {
                 account.lock();
             }
