@@ -3,6 +3,7 @@ name = "payments-engine-example"
 version = "0.1.0"
 authors = ["Oliver Evans <oliverevans96@gmail.com>"]
 edition = "2018"
+default-run = "payments-engine-example"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
