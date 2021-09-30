@@ -7,19 +7,24 @@ use crate::validate;
 
 fn handle_deposit(deposit: Deposit, state: &mut State) -> Result<(), TransactionError> {
     log::trace!("Handling {:?}", deposit);
+    let client_id = deposit.client_id;
     let tx_id = deposit.tx_id;
     match validate::validate_deposit(deposit, &mut state.accounts, &state.transactions) {
         Ok((valid_deposit, mut account)) => {
             account.modify_balances_for_deposit(&valid_deposit);
-            state
-                .transactions
-                .insert(tx_id, TransactionContainer::Deposit(Ok(valid_deposit)));
+            state.transactions.insert(
+                client_id,
+                tx_id,
+                TransactionContainer::Deposit(Ok(valid_deposit)),
+            );
             Ok(())
         }
         Err(err) => {
-            state
-                .transactions
-                .insert(tx_id, TransactionContainer::Deposit(Err(err.clone())));
+            state.transactions.insert(
+                client_id,
+                tx_id,
+                TransactionContainer::Deposit(Err(err.clone())),
+            );
             Err(err)
         }
     }
@@ -27,20 +32,24 @@ fn handle_deposit(deposit: Deposit, state: &mut State) -> Result<(), Transaction
 
 fn handle_withdrawal(withdrawal: Withdrawal, state: &mut State) -> Result<(), TransactionError> {
     log::trace!("Handling {:?}", withdrawal);
+    let client_id = withdrawal.client_id;
     let tx_id = withdrawal.tx_id;
     match validate::validate_withdrawal(withdrawal, &mut state.accounts, &state.transactions) {
         Ok((valid_withdrawal, mut account)) => {
             account.modify_balances_for_withdrawal(&valid_withdrawal);
             state.transactions.insert(
+                client_id,
                 tx_id,
                 TransactionContainer::Withdrawal(Ok(valid_withdrawal)),
             );
             Ok(())
         }
         Err(err) => {
-            state
-                .transactions
-                .insert(tx_id, TransactionContainer::Withdrawal(Err(err.clone())));
+            state.transactions.insert(
+                client_id,
+                tx_id,
+                TransactionContainer::Withdrawal(Err(err.clone())),
+            );
             Err(err)
         }
     }
@@ -48,6 +57,7 @@ fn handle_withdrawal(withdrawal: Withdrawal, state: &mut State) -> Result<(), Tr
 
 fn handle_dispute(dispute: Dispute, state: &mut State) -> Result<(), TransactionError> {
     log::trace!("Handling {:?}", dispute);
+    let client_id = dispute.client_id;
     let tx_id = dispute.tx_id;
     match validate::validate_dispute(
         dispute,
@@ -57,7 +67,7 @@ fn handle_dispute(dispute: Dispute, state: &mut State) -> Result<(), Transaction
     ) {
         Ok((disputed_tx, mut account)) => {
             account.modify_balances_for_dispute(disputed_tx);
-            state.disputes.dispute_tx(tx_id);
+            state.disputes.dispute_tx(client_id, tx_id)?;
             Ok(())
         }
         Err(err) => Err(err),
@@ -66,6 +76,7 @@ fn handle_dispute(dispute: Dispute, state: &mut State) -> Result<(), Transaction
 
 fn handle_resolve(resolve: Resolve, state: &mut State) -> Result<(), TransactionError> {
     log::trace!("Handling {:?}", resolve);
+    let client_id = resolve.client_id;
     let tx_id = resolve.tx_id;
     match validate::validate_post_dispute(
         resolve,
@@ -75,7 +86,7 @@ fn handle_resolve(resolve: Resolve, state: &mut State) -> Result<(), Transaction
     ) {
         Ok((disputed_tx, mut access)) => {
             access.modify_balances_for_resolve(disputed_tx);
-            state.disputes.undispute_tx(tx_id);
+            state.disputes.undispute_tx(client_id, tx_id)?;
             Ok(())
         }
         Err(err) => Err(err),
@@ -84,6 +95,7 @@ fn handle_resolve(resolve: Resolve, state: &mut State) -> Result<(), Transaction
 
 fn handle_chargeback(chargeback: Chargeback, state: &mut State) -> Result<(), TransactionError> {
     log::trace!("Handling {:?}", chargeback);
+    let client_id = chargeback.client_id;
     let tx_id = chargeback.tx_id;
     match validate::validate_post_dispute(
         chargeback,
@@ -96,7 +108,7 @@ fn handle_chargeback(chargeback: Chargeback, state: &mut State) -> Result<(), Tr
             if let AccountAccess::Unlocked(mut account) = access {
                 account.lock();
             }
-            state.disputes.undispute_tx(tx_id);
+            state.disputes.undispute_tx(client_id, tx_id)?;
             Ok(())
         }
         Err(err) => Err(err),

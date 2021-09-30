@@ -1,19 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::account::AccountAccess;
-use crate::types::{Account, TransactionContainer};
+use crate::types::{Account, TransactionContainer, TransactionError};
 use crate::types::{ClientId, TransactionId};
 
 // TODO: avoid locking whole state to read/write
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 pub struct AccountsState(HashMap<ClientId, Account>);
-
-impl Default for AccountsState {
-    fn default() -> Self {
-        Self(HashMap::new())
-    }
-}
 
 impl From<HashMap<ClientId, Account>> for AccountsState {
     fn from(inner: HashMap<ClientId, Account>) -> Self {
@@ -48,59 +42,100 @@ impl AccountsState {
     }
 }
 
-#[derive(Debug)]
-pub struct TransactionsState(HashMap<TransactionId, TransactionContainer>);
-
-impl Default for TransactionsState {
-    fn default() -> Self {
-        Self(HashMap::new())
-    }
+#[derive(Debug, Default)]
+pub struct TransactionsState {
+    by_client: HashMap<ClientId, HashMap<TransactionId, TransactionContainer>>,
+    tx_ids: HashSet<TransactionId>,
 }
 
 impl TransactionsState {
-    pub fn get(&self, tx_id: TransactionId) -> Option<&TransactionContainer> {
-        self.0.get(&tx_id)
+    pub fn tx_exists(&self, tx_id: TransactionId) -> bool {
+        self.tx_ids.contains(&tx_id)
     }
 
-    pub fn insert(&mut self, tx_id: TransactionId, transaction: TransactionContainer) {
-        // NOTE: Discarding duplicate transactions silently
-        self.0.entry(tx_id).or_insert(transaction);
+    pub fn get(&self, client_id: ClientId, tx_id: TransactionId) -> Option<&TransactionContainer> {
+        self.by_client.get(&client_id).and_then(|c| c.get(&tx_id))
     }
 
-    pub fn iter_unordered(&self) -> impl Iterator<Item=(&TransactionId, &TransactionContainer)> {
-        self.0.iter()
-    }
-}
+    pub fn insert(
+        &mut self,
+        client_id: ClientId,
+        tx_id: TransactionId,
+        transaction: TransactionContainer,
+    ) {
+        // Get hash map for client, or create one if none exists.
+        let client_txs = self.by_client.entry(client_id).or_default();
 
-#[derive(Debug)]
-pub struct DisputesState(HashSet<TransactionId>);
-
-impl Default for DisputesState {
-    fn default() -> Self {
-        Self(HashSet::new())
-    }
-}
-
-impl DisputesState {
-    pub fn is_disputed(&self, tx_id: TransactionId) -> bool {
-        self.0.contains(&tx_id)
-    }
-
-    pub fn dispute_tx(&mut self, tx_id: TransactionId) {
-        let success = self.0.insert(tx_id);
-        if !success {
-            log::warn!("Transaction {} has been doubly disputed.", tx_id);
-        }
-    }
-
-    pub fn undispute_tx(&mut self, tx_id: TransactionId) {
-        let success = self.0.remove(&tx_id);
+        // Store transaction id globally to avoid duplicates
+        let success = self.tx_ids.insert(tx_id);
         if !success {
             log::warn!(
-                "Transaction {} has been undisputed, but wasn't previously disputed.",
+                "Storing duplicate tx_id {} - did you forget to validate?",
                 tx_id
-            );
+            )
         }
+
+        // NOTE: Discarding duplicate transactions silently
+        client_txs.entry(tx_id).or_insert(transaction);
+    }
+
+    pub fn iter_client_unordered(
+        &self,
+        client_id: ClientId,
+    ) -> Option<impl Iterator<Item = (&TransactionId, &TransactionContainer)>> {
+        self.by_client.get(&client_id).and_then(|c| Some(c.iter()))
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct DisputesState(HashMap<ClientId, HashSet<TransactionId>>);
+
+impl DisputesState {
+    pub fn is_disputed(&self, client_id: ClientId, tx_id: TransactionId) -> bool {
+        if let Some(client_disputes) = self.0.get(&client_id) {
+            client_disputes.contains(&tx_id)
+        } else {
+            // If we have no disputes for this client, then tx is not disputed.
+            false
+        }
+    }
+
+    pub fn dispute_tx(
+        &mut self,
+        client_id: ClientId,
+        tx_id: TransactionId,
+    ) -> Result<(), TransactionError> {
+        // TODO: These things should already be checked.
+        // Can we safely avoid checking twice?
+        let client_disputes = self.0.entry(client_id).or_default();
+        let success = client_disputes.insert(tx_id);
+        if success {
+            Ok(())
+        } else {
+            Err(TransactionError::TxAlreadyDisputed {
+                client: client_id,
+                tx: tx_id,
+            })
+        }
+    }
+
+    // TODO: Don't allow settled transactions to be re-disputed.
+
+    pub fn undispute_tx(
+        &mut self,
+        client_id: ClientId,
+        tx_id: TransactionId,
+    ) -> Result<(), TransactionError> {
+        if let Some(inner) = self.0.get_mut(&client_id) {
+            let success = inner.remove(&tx_id);
+            if success {
+                return Ok(());
+            }
+        }
+        Err(TransactionError::TxNotDisputed {
+            client: client_id,
+            tx: tx_id,
+        })
     }
 }
 

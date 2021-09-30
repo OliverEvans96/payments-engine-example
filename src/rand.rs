@@ -49,13 +49,15 @@ impl TransactionGenerator {
         client_id: ClientId,
     ) -> Vec<(TransactionId, &TransactionContainer)> {
         let mut txs = Vec::new();
-        // Iterate over ALL previous transactions
-        for (&tx_id, tx) in self.state.transactions.iter_unordered() {
-            // Downcast successful transactions to Box<dyn Transaction>
-            if let Ok(boxed) = tx.get_transaction() {
-                // If transaction is for the relevant client
-                if boxed.get_client_id() == client_id {
-                    txs.push((tx_id, tx));
+        // Iterate over client's previous transactions
+        if let Some(client_iter) = self.state.transactions.iter_client_unordered(client_id) {
+            for (&tx_id, tx) in client_iter {
+                // Downcast successful transactions to Box<dyn Transaction>
+                if let Ok(boxed) = tx.get_transaction() {
+                    // If transaction is for the relevant client
+                    if boxed.get_client_id() == client_id {
+                        txs.push((tx_id, tx));
+                    }
                 }
             }
         }
@@ -73,7 +75,7 @@ impl TransactionGenerator {
         let client_txs_ids = self.get_txs_for_client(client_id);
         for (tx_id, tx) in client_txs_ids {
             if let Ok(_) = tx.try_get_disputable() {
-                if self.state.disputes.is_disputed(tx_id) == disputed {
+                if self.state.disputes.is_disputed(client_id, tx_id) == disputed {
                     return Some(tx_id);
                 }
             }

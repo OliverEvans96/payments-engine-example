@@ -74,9 +74,9 @@ pub enum TransactionError {
     /// The disputed transaction didn't succeed,
     /// so there's no point in disputing it.
     DisputedTxFailed { tx: TransactionId },
-    /// This is an attempt to dispute a
-    /// transaction on another client's account,
-    DisputeClientMismatch {
+    /// The client_id on this transaction does not
+    /// match the client_id on the referenced transaction.
+    ClientMismatch {
         tx: TransactionId,
         tx_client: ClientId,
         dispute_client: ClientId,
