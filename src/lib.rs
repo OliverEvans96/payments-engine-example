@@ -79,7 +79,7 @@ fn deserialize_record(record: StringRecord, headers: &StringRecord) -> Option<Tr
     }
 }
 
-fn configure_deserialize_workers(num_workers: Option<usize>) {
+pub fn configure_deserialize_workers(num_workers: Option<usize>) {
     // Default to half of the available logical cores
     let num_threads = num_workers.unwrap_or_else(|| num_cpus::get() / 2);
 
@@ -95,18 +95,14 @@ fn configure_deserialize_workers(num_workers: Option<usize>) {
 pub fn process_transactions<R: io::Read + Send + 'static, W: io::Write>(
     input_stream: R,
     output_stream: &mut W,
+    batch_size: usize,
 ) {
     // TODO: Async / multithreaded?
     let mut state = State::new();
 
-    // TODO: CLI opt
-    let batch_size = 1000;
-    let max_batches = 2;
-
-    // TODO: CLI opt
-    let num_workers = None;
-
-    configure_deserialize_workers(num_workers);
+    // Maximum number of batches to keep in the channel at once.
+    // Once this limit is reached, IO will pause until one is processed.
+    let max_batches = 1;
 
     let (records_snd, records_rcv) = sync_channel::<Vec<StringRecord>>(max_batches);
     let (headers_snd, headers_rcv) = sync_channel::<StringRecord>(1);

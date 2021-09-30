@@ -16,7 +16,8 @@ fn run_test_from_directory(directory: path::PathBuf) -> Result<(), Box<dyn Error
 
     // Write results to in-memory buffer
     let mut output_buf = io::Cursor::new(Vec::new());
-    process_transactions(transactions_file, &mut output_buf);
+    let batch_size = 1000;
+    process_transactions(transactions_file, &mut output_buf, batch_size);
 
     // Re-deserialize actual results from output buffer
     output_buf.set_position(0);
