@@ -106,10 +106,17 @@ fn validate_dispute_for_successful_tx<'a, 't, 'd, D: Disputable>(
     let tx_id = dispute.get_tx_id();
     let client_id = dispute.get_client_id();
 
-    let disputed = disputes.is_disputed(client_id, tx_id);
     // NOTE: CHECK 4: Cannot dispute an actively disputed transaction
-    if disputed {
+    if disputes.is_disputed(client_id, tx_id) {
         return Err(TransactionError::TxAlreadyDisputed {
+            client: client_id,
+            tx: tx_id,
+        });
+    }
+
+    // NOTE: CHECK 5: Cannot dispute a settled transaction
+    if disputes.is_settled(client_id, tx_id) {
+        return Err(TransactionError::DisputeAlreadySettled {
             client: client_id,
             tx: tx_id,
         });
@@ -138,6 +145,7 @@ fn validate_dispute_for_successful_tx<'a, 't, 'd, D: Disputable>(
 /// 2. transaction initially succeeded
 /// 3. transaction refers to same client
 /// 4. transaction is not actively disputed
+/// 5. transaction is not already settled
 pub fn validate_dispute<'a, 't, 'd>(
     dispute: Dispute,
     accounts: &'a mut AccountsState,

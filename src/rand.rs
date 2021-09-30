@@ -42,20 +42,31 @@ impl TransactionGenerator {
     }
 
     fn get_disputed_tx_id_for_client(&self, client_id: ClientId) -> Option<TransactionId> {
-        let disputed_tx_ids = self.state.disputes.get_tx_ids_by_client(client_id);
-        if disputed_tx_ids.len() > 0 {
-            let all_tx_ids = self.state.transactions.get_tx_ids_by_client(client_id);
-            // The set difference yields all elements of the first set but not the second
-            let undisputed_tx_ids = &all_tx_ids - &disputed_tx_ids;
-            undisputed_tx_ids.iter().next().cloned()
-        } else {
-            None
-        }
+        let disputed_tx_ids = self.state.disputes.get_disputed_tx_ids_by_client(client_id);
+        disputed_tx_ids.iter().next().cloned()
     }
 
     fn get_undisputed_tx_id_for_client(&self, client_id: ClientId) -> Option<TransactionId> {
-        let disputed_tx_ids = self.state.disputes.get_tx_ids_by_client(client_id);
-        disputed_tx_ids.iter().next().cloned()
+        let all_tx_ids = self.state.transactions.get_tx_ids_by_client(client_id);
+        let disputed_tx_ids = self.state.disputes.get_disputed_tx_ids_by_client(client_id);
+        let settled_tx_ids = self.state.disputes.get_settled_tx_ids_by_client(client_id);
+        // The set difference yields all elements of the first set but not the second
+        let undisputed_tx_ids = &(&all_tx_ids - &disputed_tx_ids) - &settled_tx_ids;
+        undisputed_tx_ids.iter().next().cloned()
+    }
+
+    /// Returns true if the (client_id, tx_id) pair is valid and of a disputable type.
+    /// If any of the following are true, return false:
+    /// 1. the pair is invalid
+    /// 2. the transaction failed
+    /// 3. or the transaction type is not disputable
+    fn is_transaction_disputable(&self, client_id: ClientId, tx_id: TransactionId) -> bool {
+        if let Some(tx) = self.state.transactions.get(client_id, tx_id) {
+            if let Ok(Ok(_)) = tx.try_get_disputable() {
+                return true;
+            }
+        }
+        false
     }
 
     /// Generate a deposit for a random client if possible
@@ -109,8 +120,10 @@ impl TransactionGenerator {
         let client_id = self.get_client_id(&mut rng);
         if let Some(_) = self.state.accounts.get(client_id) {
             if let Some(tx_id) = self.get_undisputed_tx_id_for_client(client_id) {
-                let dispute = Dispute { client_id, tx_id };
-                return Some(dispute.into());
+                if self.is_transaction_disputable(client_id, tx_id) {
+                    let dispute = Dispute { client_id, tx_id };
+                    return Some(dispute.into());
+                }
             }
         }
         None

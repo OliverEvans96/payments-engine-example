@@ -99,11 +99,23 @@ impl TransactionsState {
 }
 
 #[derive(Debug, Default)]
-pub struct DisputesState(HashMap<ClientId, HashSet<TransactionId>>);
+pub struct DisputesState {
+    active: HashMap<ClientId, HashSet<TransactionId>>,
+    settled: HashMap<ClientId, HashSet<TransactionId>>,
+}
 
 impl DisputesState {
     pub fn is_disputed(&self, client_id: ClientId, tx_id: TransactionId) -> bool {
-        if let Some(client_disputes) = self.0.get(&client_id) {
+        if let Some(client_disputes) = self.active.get(&client_id) {
+            client_disputes.contains(&tx_id)
+        } else {
+            // If we have no disputes for this client, then tx is not disputed.
+            false
+        }
+    }
+
+    pub fn is_settled(&self, client_id: ClientId, tx_id: TransactionId) -> bool {
+        if let Some(client_disputes) = self.settled.get(&client_id) {
             client_disputes.contains(&tx_id)
         } else {
             // If we have no disputes for this client, then tx is not disputed.
@@ -118,9 +130,10 @@ impl DisputesState {
     ) -> Result<(), TransactionError> {
         // TODO: These things should already be checked.
         // Can we safely avoid checking twice?
-        let client_disputes = self.0.entry(client_id).or_default();
-        let success = client_disputes.insert(tx_id);
-        if success {
+        // NOTE: Not checking whether transaction is already settled
+        let client_disputes = self.active.entry(client_id).or_default();
+        let insert_success = client_disputes.insert(tx_id);
+        if insert_success {
             Ok(())
         } else {
             Err(TransactionError::TxAlreadyDisputed {
@@ -132,15 +145,25 @@ impl DisputesState {
 
     // TODO: Don't allow settled transactions to be re-disputed.
 
-    pub fn undispute_tx(
+    pub fn settle_dispute(
         &mut self,
         client_id: ClientId,
         tx_id: TransactionId,
     ) -> Result<(), TransactionError> {
-        if let Some(inner) = self.0.get_mut(&client_id) {
-            let success = inner.remove(&tx_id);
-            if success {
-                return Ok(());
+        // NOTE: When using async, make sure to { remove & insert } atomically.
+        if let Some(client_active) = self.active.get_mut(&client_id) {
+            let remove_success = client_active.remove(&tx_id);
+            if remove_success {
+                let client_settled = self.settled.entry(client_id).or_default();
+                let insert_success = client_settled.insert(tx_id);
+                if insert_success {
+                    return Ok(());
+                } else {
+                    return Err(TransactionError::DisputeAlreadySettled {
+                        tx: tx_id,
+                        client: client_id,
+                    });
+                }
             }
         }
         Err(TransactionError::TxNotDisputed {
@@ -149,8 +172,12 @@ impl DisputesState {
         })
     }
 
-    pub fn get_tx_ids_by_client(&self, client_id: ClientId) -> HashSet<TransactionId> {
-        self.0.get(&client_id).cloned().unwrap_or_else(|| HashSet::new())
+    pub fn get_disputed_tx_ids_by_client(&self, client_id: ClientId) -> HashSet<TransactionId> {
+        self.active.get(&client_id).cloned().unwrap_or_else(HashSet::new)
+    }
+
+    pub fn get_settled_tx_ids_by_client(&self, client_id: ClientId) -> HashSet<TransactionId> {
+        self.settled.get(&client_id).cloned().unwrap_or_else(HashSet::new)
     }
 
 }

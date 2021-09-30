@@ -86,7 +86,7 @@ fn handle_resolve(resolve: Resolve, state: &mut State) -> Result<(), Transaction
     ) {
         Ok((disputed_tx, mut access)) => {
             access.modify_balances_for_resolve(disputed_tx);
-            state.disputes.undispute_tx(client_id, tx_id)?;
+            state.disputes.settle_dispute(client_id, tx_id)?;
             Ok(())
         }
         Err(err) => Err(err),
@@ -108,7 +108,7 @@ fn handle_chargeback(chargeback: Chargeback, state: &mut State) -> Result<(), Tr
             if let AccountAccess::Unlocked(mut account) = access {
                 account.lock();
             }
-            state.disputes.undispute_tx(client_id, tx_id)?;
+            state.disputes.settle_dispute(client_id, tx_id)?;
             Ok(())
         }
         Err(err) => Err(err),

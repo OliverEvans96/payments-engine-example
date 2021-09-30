@@ -74,6 +74,8 @@ pub enum TransactionError {
     /// The disputed transaction didn't succeed,
     /// so there's no point in disputing it.
     DisputedTxFailed { tx: TransactionId },
+    /// Transaction has already been disputed and settled - cannot redispute.
+    DisputeAlreadySettled { client: ClientId, tx: TransactionId },
     /// The client_id on this transaction does not
     /// match the client_id on the referenced transaction.
     ClientMismatch {
