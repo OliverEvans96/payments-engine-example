@@ -112,12 +112,31 @@ pub enum TransactionType {
 impl Distribution<TransactionType> for Standard {
     fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> TransactionType {
         // Inspired by https://stackoverflow.com/a/58434531/4228052
+
+        // Proportions of randomly generated types
+        // to fall in each category
+        // NOTE: The real, proper way to do this might
+        // be to implement a custom rand::Distribution,
+        // but I'm not going to do that.
+        let deposit_pcnt = 0.4;
+        let withdrawal_pcnt = 0.3;
+        let dispute_pcnt = 0.1;
+        let resolve_pcnt = 0.15;
+        let chargeback_pcnt = 0.05;
+
+        let cum_deposit = 0.0 + deposit_pcnt;
+        let cum_withdrawal = cum_deposit + withdrawal_pcnt;
+        let cum_dispute = cum_withdrawal + dispute_pcnt;
+        let cum_resolve = cum_dispute + resolve_pcnt;
+        let _cum_chargeback = cum_resolve + chargeback_pcnt;
+
         let x: f32 = rng.gen();
+
         match x {
-            x if x < 0.2 => TransactionType::Deposit,
-            x if x < 0.4 => TransactionType::Withdrawal,
-            x if x < 0.6 => TransactionType::Dispute,
-            x if x < 0.8 => TransactionType::Resolve,
+            x if x < cum_deposit => TransactionType::Deposit,
+            x if x < cum_withdrawal => TransactionType::Withdrawal,
+            x if x < cum_dispute => TransactionType::Dispute,
+            x if x < cum_resolve => TransactionType::Resolve,
             _ => TransactionType::Chargeback,
         }
     }
