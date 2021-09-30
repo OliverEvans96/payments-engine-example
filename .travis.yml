@@ -13,8 +13,6 @@ addons:
 
 # run builds for all the trains (and more)
 rust:
-  - nightly
-  # check it compiles on the latest stable compiler
   - stable
 
 # load travis-cargo
@@ -33,7 +31,7 @@ script:
 after_success:
   # upload the documentation from the build with stable (automatically only actually
   # runs on the master branch, not individual PRs)
-  - travis-cargo --only stable doc-upload
+  - travis-cargo --only stable doc-upload --branch main
   # measure code coverage and upload to coveralls.io (the verify
   # argument mitigates kcov crashes due to malformed debuginfo, at the
   # cost of some speed <https://github.com/huonw/travis-cargo/issues/12>)
