@@ -20,7 +20,7 @@ before_script:
   - |
       pip install 'travis-cargo<0.2' --user &&
       # needed for doc-upload
-      pip install python-dateutil &&
+      pip install python-dateutil --user &&
       export PATH=$HOME/.local/bin:$PATH
 
 # the main build
