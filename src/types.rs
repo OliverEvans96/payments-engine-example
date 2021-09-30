@@ -109,34 +109,34 @@ pub enum TransactionType {
     Chargeback,
 }
 
+// Proportions of randomly generated types
+// to fall in each category
+// NOTE: The real, proper way to do this might
+// be to implement a custom rand::Distribution,
+// but I'm not going to do that.
+const DEPOSIT_PCNT: f32 = 0.5;
+const WITHDRAWAL_PCNT: f32 = 0.4;
+const DISPUTE_PCNT: f32 = 0.05;
+const RESOLVE_PCNT: f32 = 0.04;
+// const CHARGEBACK_PCNT: f32 = 0.01;
+
+const CUM_DEPOSIT: f32 = 0.0 + DEPOSIT_PCNT;
+const CUM_WITHDRAWAL: f32 = CUM_DEPOSIT + WITHDRAWAL_PCNT;
+const CUM_DISPUTE: f32 = CUM_WITHDRAWAL + DISPUTE_PCNT;
+const CUM_RESOLVE: f32 = CUM_DISPUTE + RESOLVE_PCNT;
+// const CUM_CHARGEBACK: f32 = CUM_RESOLVE + CHARGEBACK_PCNT;
+
 impl Distribution<TransactionType> for Standard {
     fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> TransactionType {
         // Inspired by https://stackoverflow.com/a/58434531/4228052
 
-        // Proportions of randomly generated types
-        // to fall in each category
-        // NOTE: The real, proper way to do this might
-        // be to implement a custom rand::Distribution,
-        // but I'm not going to do that.
-        let deposit_pcnt = 0.4;
-        let withdrawal_pcnt = 0.3;
-        let dispute_pcnt = 0.1;
-        let resolve_pcnt = 0.15;
-        let chargeback_pcnt = 0.05;
-
-        let cum_deposit = 0.0 + deposit_pcnt;
-        let cum_withdrawal = cum_deposit + withdrawal_pcnt;
-        let cum_dispute = cum_withdrawal + dispute_pcnt;
-        let cum_resolve = cum_dispute + resolve_pcnt;
-        let _cum_chargeback = cum_resolve + chargeback_pcnt;
-
         let x: f32 = rng.gen();
 
         match x {
-            x if x < cum_deposit => TransactionType::Deposit,
-            x if x < cum_withdrawal => TransactionType::Withdrawal,
-            x if x < cum_dispute => TransactionType::Dispute,
-            x if x < cum_resolve => TransactionType::Resolve,
+            x if x < CUM_DEPOSIT => TransactionType::Deposit,
+            x if x < CUM_WITHDRAWAL => TransactionType::Withdrawal,
+            x if x < CUM_DISPUTE => TransactionType::Dispute,
+            x if x < CUM_RESOLVE => TransactionType::Resolve,
             _ => TransactionType::Chargeback,
         }
     }
