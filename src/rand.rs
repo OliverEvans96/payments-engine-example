@@ -78,7 +78,6 @@ impl TransactionGenerator {
         } else {
             None
         }
-
     }
 
     /// Generate a withdrawal for a random client if possible
@@ -200,4 +199,25 @@ pub fn generate_random_valid_transaction_sequence(
 ) -> impl Iterator<Item = TransactionRecord> {
     let generator = TransactionGenerator::new(num_tx, max_client, max_deposit, max_attempts);
     generator.into_iter()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TransactionGenerator;
+    use crate::handlers::handle_transaction;
+    use crate::state::State;
+
+    #[test]
+    fn test_transaction_sequence_is_valid() {
+        let num_tx = Some(10000);
+        let max_client = 300;
+        let max_deposit = 500.0;
+        let max_attempts = 10_000;
+        let generator = TransactionGenerator::new(num_tx, max_client, max_deposit, max_attempts);
+        let mut state = State::new();
+        for record in generator {
+            let result = handle_transaction(record, &mut state);
+            assert!(matches!(result, Ok(_)))
+        }
+    }
 }
