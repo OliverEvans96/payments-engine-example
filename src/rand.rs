@@ -7,7 +7,7 @@ use crate::types::{Chargeback, Deposit, Dispute, Resolve, Withdrawal};
 use crate::types::{ClientId, CurrencyFloat, TransactionId};
 use crate::types::{TransactionRecord, TransactionType};
 
-const MIN_AMOUNT: CurrencyFloat = 0.001;
+const MIN_AMOUNT: CurrencyFloat = 0.0001;
 
 struct TransactionGenerator {
     state: State,
@@ -68,13 +68,17 @@ impl TransactionGenerator {
             }
         }
 
-        let deposit = Deposit {
-            client_id,
-            tx_id: self.tx_id,
-            amount: rng.gen_range(MIN_AMOUNT..self.max_deposit),
-        };
+        if self.max_deposit > MIN_AMOUNT {
+            let deposit = Deposit {
+                client_id,
+                tx_id: self.tx_id,
+                amount: rng.gen_range(MIN_AMOUNT..self.max_deposit),
+            };
+            Some(deposit.into())
+        } else {
+            None
+        }
 
-        Some(deposit.into())
     }
 
     /// Generate a withdrawal for a random client if possible
@@ -86,12 +90,14 @@ impl TransactionGenerator {
                 // Floor here to make sure amount doesn't exceed
                 // the available balance after rounding.
                 let max_amount = floor_currency(account.available);
-                let withdrawal = Withdrawal {
-                    client_id,
-                    tx_id: self.tx_id,
-                    amount: rng.gen_range(MIN_AMOUNT..max_amount),
-                };
-                return Some(withdrawal.into());
+                if max_amount > MIN_AMOUNT {
+                    let withdrawal = Withdrawal {
+                        client_id,
+                        tx_id: self.tx_id,
+                        amount: rng.gen_range(MIN_AMOUNT..max_amount),
+                    };
+                    return Some(withdrawal.into());
+                }
             }
         }
 
