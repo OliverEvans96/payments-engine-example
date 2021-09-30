@@ -3,7 +3,7 @@ use rand::{thread_rng, Rng};
 use crate::currency::floor_currency;
 use crate::handlers::handle_transaction;
 use crate::state::State;
-use crate::types::{Chargeback, Deposit, Dispute, Resolve, TransactionContainer, Withdrawal};
+use crate::types::{Chargeback, Deposit, Dispute, Resolve, Withdrawal};
 use crate::types::{ClientId, CurrencyFloat, TransactionId};
 use crate::types::{TransactionRecord, TransactionType};
 
@@ -41,46 +41,21 @@ impl TransactionGenerator {
         rng.gen_range(1..=self.max_client)
     }
 
-    /// NOTE: This is a very expensive way to do this.
-    /// It would be much easier if transactions were stored
-    /// grouped by client.
-    fn get_txs_for_client(
-        &self,
-        client_id: ClientId,
-    ) -> Vec<(TransactionId, &TransactionContainer)> {
-        let mut txs = Vec::new();
-        // Iterate over client's previous transactions
-        if let Some(client_iter) = self.state.transactions.iter_client_unordered(client_id) {
-            for (&tx_id, tx) in client_iter {
-                // Downcast successful transactions to Box<dyn Transaction>
-                if let Ok(boxed) = tx.get_transaction() {
-                    // If transaction is for the relevant client
-                    if boxed.get_client_id() == client_id {
-                        txs.push((tx_id, tx));
-                    }
-                }
-            }
+    fn get_disputed_tx_id_for_client(&self, client_id: ClientId) -> Option<TransactionId> {
+        let disputed_tx_ids = self.state.disputes.get_tx_ids_by_client(client_id);
+        if disputed_tx_ids.len() > 0 {
+            let all_tx_ids = self.state.transactions.get_tx_ids_by_client(client_id);
+            // The set difference yields all elements of the first set but not the second
+            let undisputed_tx_ids = &all_tx_ids - &disputed_tx_ids;
+            undisputed_tx_ids.iter().next().cloned()
+        } else {
+            None
         }
-        txs
     }
 
-    /// Get a single transaction for a client which is either disputed or undisputed,
-    /// depending on the `disputed` arg, if one exists.
-    /// TODO: This is so terribly inefficient
-    fn get_disputable_tx_id_for_client(
-        &self,
-        client_id: ClientId,
-        disputed: bool,
-    ) -> Option<TransactionId> {
-        let client_txs_ids = self.get_txs_for_client(client_id);
-        for (tx_id, tx) in client_txs_ids {
-            if let Ok(_) = tx.try_get_disputable() {
-                if self.state.disputes.is_disputed(client_id, tx_id) == disputed {
-                    return Some(tx_id);
-                }
-            }
-        }
-        None
+    fn get_undisputed_tx_id_for_client(&self, client_id: ClientId) -> Option<TransactionId> {
+        let disputed_tx_ids = self.state.disputes.get_tx_ids_by_client(client_id);
+        disputed_tx_ids.iter().next().cloned()
     }
 
     /// Generate a deposit for a random client if possible
@@ -128,7 +103,7 @@ impl TransactionGenerator {
         let mut rng = thread_rng();
         let client_id = self.get_client_id(&mut rng);
         if let Some(_) = self.state.accounts.get(client_id) {
-            if let Some(tx_id) = self.get_disputable_tx_id_for_client(client_id, false) {
+            if let Some(tx_id) = self.get_undisputed_tx_id_for_client(client_id) {
                 let dispute = Dispute { client_id, tx_id };
                 return Some(dispute.into());
             }
@@ -141,7 +116,7 @@ impl TransactionGenerator {
         let mut rng = thread_rng();
         let client_id = self.get_client_id(&mut rng);
         if let Some(_) = self.state.accounts.get(client_id) {
-            if let Some(tx_id) = self.get_disputable_tx_id_for_client(client_id, true) {
+            if let Some(tx_id) = self.get_disputed_tx_id_for_client(client_id) {
                 let resolve = Resolve { client_id, tx_id };
                 return Some(resolve.into());
             }
@@ -153,7 +128,7 @@ impl TransactionGenerator {
         let mut rng = thread_rng();
         let client_id = self.get_client_id(&mut rng);
         if let Some(_) = self.state.accounts.get(client_id) {
-            if let Some(tx_id) = self.get_disputable_tx_id_for_client(client_id, true) {
+            if let Some(tx_id) = self.get_disputed_tx_id_for_client(client_id) {
                 let chargeback = Chargeback { client_id, tx_id };
                 return Some(chargeback.into());
             }

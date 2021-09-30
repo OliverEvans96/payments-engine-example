@@ -79,11 +79,22 @@ impl TransactionsState {
         client_txs.entry(tx_id).or_insert(transaction);
     }
 
-    pub fn iter_client_unordered(
-        &self,
-        client_id: ClientId,
-    ) -> Option<impl Iterator<Item = (&TransactionId, &TransactionContainer)>> {
-        self.by_client.get(&client_id).and_then(|c| Some(c.iter()))
+    // TODO: Remove
+    // pub fn iter_client_unordered(
+    //     &self,
+    //     client_id: ClientId,
+    // ) -> Option<impl Iterator<Item = (&TransactionId, &TransactionContainer)>> {
+    //     self.by_client.get(&client_id).and_then(|c| Some(c.iter()))
+    // }
+
+    /// Get the set of tx ids for this client
+    pub fn get_tx_ids_by_client(&self, client_id: ClientId) -> HashSet<TransactionId> {
+        // See https://stackoverflow.com/a/59156843/4228052
+        if let Some(map) = self.by_client.get(&client_id) {
+            map.keys().cloned().collect()
+        } else {
+            HashSet::new()
+        }
     }
 }
 
@@ -137,6 +148,11 @@ impl DisputesState {
             tx: tx_id,
         })
     }
+
+    pub fn get_tx_ids_by_client(&self, client_id: ClientId) -> HashSet<TransactionId> {
+        self.0.get(&client_id).cloned().unwrap_or_else(|| HashSet::new())
+    }
+
 }
 
 #[derive(Debug)]
