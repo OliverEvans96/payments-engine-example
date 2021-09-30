@@ -22,11 +22,11 @@ fn main_command(path: &str) {
 
     // Read from stdin or file
     if path == "-" {
-        let mut input = io::stdin();
-        process_transactions(&mut input, &mut output);
+        let input = io::stdin();
+        process_transactions(input, &mut output);
     } else {
-        if let Ok(mut input) = fs::File::open(&path) {
-            process_transactions(&mut input, &mut output);
+        if let Ok(input) = fs::File::open(&path) {
+            process_transactions(input, &mut output);
         } else {
             log::error!("Could not open input file '{}'", &path);
         }

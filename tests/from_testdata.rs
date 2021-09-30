@@ -9,14 +9,14 @@ fn run_test_from_directory(directory: path::PathBuf) -> Result<(), Box<dyn Error
     let transactions_path = directory.join("transactions.csv");
     let accounts_path = directory.join("accounts.csv");
 
-    let mut transactions_file = fs::File::open(&transactions_path).expect(&format!(
+    let transactions_file = fs::File::open(&transactions_path).expect(&format!(
         "Failed to open transactions file '{}'",
         transactions_path.to_str().unwrap_or("<invalid path>")
     ));
 
     // Write results to in-memory buffer
     let mut output_buf = io::Cursor::new(Vec::new());
-    process_transactions(&mut transactions_file, &mut output_buf);
+    process_transactions(transactions_file, &mut output_buf);
 
     // Re-deserialize actual results from output buffer
     output_buf.set_position(0);
