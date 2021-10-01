@@ -45,6 +45,8 @@ There are five types of transactions:
 - resolve - a dispute is settled, and the original transaction stands.
 - chargeback - a dispute is settled, and the transaction is reversed. The client's account becomes frozen.
 
+Note that disputes, resolves, and chargebacks don't have their own transaction ids, they only reference deposits and withdrawals.
+
 Given a sequence of input transactions in CSV format, this program should write CSV records to `stdout` with the final state of all accounts.
 
 Input CSVs (`transactions.csv`) look something like this:
