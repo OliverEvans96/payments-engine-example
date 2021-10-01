@@ -222,10 +222,10 @@ TODO
 
 
 With trim
-![kcachegrind-trim](./assets/kcacegrind-trim.png)
+![kcachegrind-trim](./assets/kcachegrind-trim.png)
 
 Without trim
-![kcachegrind-notrim](./assets/kcacegrind-notrim.png)
+![kcachegrind-notrim](./assets/kcachegrind-notrim.png)
 
 
 ## Safety & Error Handling
