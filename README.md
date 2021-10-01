@@ -96,7 +96,7 @@ I've made the following assumptions:
 - Deposits and withdrawals must have positive amounts.
 - Once a transaction has been disputed and settled, it can't be re-disputed. Otherwise, you risk chargeback loops, which is certainly not desirable.
 - Locked accounts cannot deposit or withdrawal, but can dispute, resolve and chargeback.
-- *Only deposits can be disputed*. Given the instruction that disputes should _increase_ the `held` amount, I just haven't figured how that would make sense if disputing withdrawals were allowed.
+- **Only deposits can be disputed**. Given the instruction that disputes should _increase_ the `held` amount, I just haven't figured how that would make sense if disputing withdrawals were allowed.
 - Negative balances are not impossible. If a deposit, withdrawal, dispute-deposit sequence yields a negative balance, it's our fault for approving the chargeback.
 
 
@@ -133,49 +133,59 @@ Once the account has been updated, the transaction gets wrapped in a `Transactio
 Currently, only withdrawals and deposits are being stored in `TransactionContainers`.
 For now, it's just not necessary to store the other three, and they don't even have their own `tx_id`s.
 
+Once all transactions have been processed, I iterate over the final `AccountsState`, convert each `Account` into an `OutputRecord` (which contains the derived `total` field, and rounds to four decimal places), an serialize back to CSV.
 
 ### Extensibility
 
 I mentioned above that only deposits are disputable based on my limited understanding of the scenario.
 Presumably, everything should be disputable in the real world.
+
 Luckily, if someone comes along who knows how to dispute another type of transaction, they simply need to implement the `Disputable` trait for that type, which specifies how to modify balances for disputes, resolves, and chargebacks.
 They'll also need to "register" this new implementation by adding a `match` arm to the `try_get_disputable` function on `TransactionContainer`, which attempts to downcast a specific transaction type into `impl Disputable` if we know how to do so. See `traits.rs` for details.
 
 
 ### Maintainability
 
-TODO
+I love Rust.
+I just briefly wrote some python code after working in Rust for a while, and it felt so sloppy, I couldn't believe I've been okay with that for so long!
+Between Rust's strong, expressive type system, its memory safety guarantees, helpful compile-time errors, and editor support from the fantastic rust-analyzer, it's generally very easy to understand code, and hack fearlessly without worrying about breaking something unexpectedly.
 
-- returning early
-- using ?
-- controlled getter / setter methods, communicating via public interfaces
-- type aliases: TransactionId, ClientId, CurrencyFloat
+That said, Rust code can also devolve into an endless soup of chained iterators and turbofish.
 
+In my opinion, the type system is the best way to communicate intent.
+Comments are great, of course.
+Short, well-named functions are super helpful.
+But if you're able to teach the compiler itself what's allowed and what isn't in your domain, that leaves very little room for ambiguity for future developers.
 
-### Code Organization
+I haven't been extremely strict in this repo about sticking to rigid style guidelines, but I've attempted to generally be explicit in the face of ambiguity, and use reasonable variable names.
 
-TODO
-
-- maintainability
+A few specific, minor ways I've tried to improve readability are:
+- Returning early / using the `?` syntax where reasonable
+- Using getter / setter methods where reasonable, and generally communicating via public interfaces rather than via raw data access
+- Using type aliases such as `TransactionId = u32`, `ClientId = u16`, and `CurrencyFloat = f32`. This is useful both for later refactoring and for communication of intent.
 
 
 ## Automated testing
 
-TODO
+Of course, perhaps the best way to keep code maintainable is to have a nice suite of automated tests that build confidence that your code hasn't broken after a big refactor.
 
-- testing
-    - data-driven tests
-    - inline tests
-    - unit tests
+In this repo, I've written both unit tests, found in most individual modules, and integration tests, found in the `tests` directory.
+
+I'm using two types of integration tests:
+- "data-driven" tests, read from subdirectories of `testdata`, each of which contain an input `transactions.csv` and an expected output `accounts.csv`. These are fully end-to-end, from CSV to CSV. They only test whether the final output is correct.
+- "inline-data" tests, which run one or two specific transactions and check account state _and_ any generated errors. These are useful for making sure invalid transactions are handled appropriately.
 
 
-## Generating Test Data
+## Generating Test Transactions
 
-TODO
+Once my code was working, I was of course curious how fast it was going.
+But in order to get a reasonable sense of speed, I had to have a large input dataset to test against.
+This led me to write the `TransactionGenerator` struct, which implements `Iterator<Item=TransactionRecord>`, generating an arbitrarily large sequence of **valid** transactions.
+In practice, since accounts can be locked but not unlocked, there tend to be fewer possible transactions as time goes on.
+This can be mitigated by adding more clients, but with the `u16` limit on `client_id`s, I've maxed out at generating about 10 million transactions.
+I'm sure it's possible to squeeze out more transactions by fiddling with the ratios of `TransactionType`s (mainly fewer chargebacks).
 
-- transaction generation
-    - process
-    - data files
+I've split the transaction generation functions off into its own binary (`target/*/generate-transactions`), which can be used as follows:
 
 ```
 generate-transactions 0.1
