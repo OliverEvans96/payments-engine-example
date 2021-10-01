@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["payments_engine_example"] = [{"text":"impl <a class=\"trait\" href=\"rand/distributions/distribution/trait.Distribution.html\" title=\"trait rand::distributions::distribution::Distribution\">Distribution</a>&lt;<a class=\"enum\" href=\"payments_engine_example/types/enum.TransactionType.html\" title=\"enum payments_engine_example::types::TransactionType\">TransactionType</a>&gt; for <a class=\"struct\" href=\"rand/distributions/struct.Standard.html\" title=\"struct rand::distributions::Standard\">Standard</a>","synthetic":false,"types":["rand::distributions::Standard"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

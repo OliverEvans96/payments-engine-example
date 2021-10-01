@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["TransactionContainer",""],["TransactionError",""],["TransactionType",""]],"struct":[["Account",""],["Chargeback",""],["Deposit",""],["Dispute",""],["OutputRecord","A single row in the final output CSV"],["Resolve",""],["TransactionRecord",""],["Withdrawal",""]],"type":[["ClientId",""],["CurrencyFloat",""],["TransactionId",""]]});
