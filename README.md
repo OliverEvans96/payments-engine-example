@@ -239,14 +239,12 @@ Each batch was sent from a single `csv::StringRecord` thread through a `mpsc::ch
 Unfortunately, although my CPUs were hotter, the speedup wasn't considerable.
 The processing times for 10 million transactions are given in the following table.
 
-|------------|--------------|-------|--------|--------|
 | # records  | algorithm    | trim  | time   | tx/sec |
 |------------|--------------|-------|--------|--------|
 | 10 million | serial       | true  | 13.95s | 716k   |
 | 10 million | serial       | false | 10.87s | 920k   |
 | 10 million | 4 x parallel | true  | 11.84s | 844k   |
 | 10 million | 4 x parallel | false | 10.85s | 921k   |
-|------------|--------------|-------|--------|--------|
 
 Observing `htop`, I notice that even when spawning 8 worker threads for deserialization on my 8 core machine, less than half of my available CPU resources are used.
 
