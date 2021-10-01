@@ -221,6 +221,13 @@ TODO
             - https://stackoverflow.com/questions/40095383/how-to-return-a-reference-to-a-sub-value-of-a-value-that-is-under-a-mutex
 
 
+With trim
+![kcachegrind-trim](./assets/kcacegrind-trim.png)
+
+Without trim
+![kcachegrind-notrim](./assets/kcacegrind-notrim.png)
+
+
 ## Safety & Error Handling
 
 TODO
