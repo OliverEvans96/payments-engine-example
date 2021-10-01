@@ -208,6 +208,7 @@ OPTIONS:
     -t, --transactions <transactions>    Number of transactions to generate. Defaults to infinite (run until cancelled)
 ```
 
+Generated transactions can be found in the `data` directory, stored with Git LFS.
 
 ## Performance & Efficiency
 
@@ -233,7 +234,7 @@ With trimming disabled, it was about a 1:1 ratio of deserializing to processing,
 
 Since the program appeared CPU-bound rather than IO-bound, my next step was to attempt parallelizing.
 
-I used the `rayon` data-parallelism library to deserialize transactions in batches. 
+I used the `rayon` data-parallelism library to deserialize transactions in batches.
 Each batch was sent from a single `csv::StringRecord` thread through a `mpsc::channel` to be divided and deserialized among the worker threads.
 
 Unfortunately, although my CPUs were hotter, the speedup wasn't considerable.
@@ -269,7 +270,7 @@ In particular, I found some discussion [on StackOverflow](https://stackoverflow.
 - The [`owning_ref`](https://kimundi.github.io/owning-ref-rs/owning_ref/index.html) crate, which bundles a `MutexGuard` with the underlying data to prevent `.drop` from being called
 - `parking_lot::Mutex` has a `Mutex::map` function which maps the mutex guard to a reference derived from the object it guards.
 
-I still haven't quite wrapped my head around first option. I think I understand the concept in theory, but my mental model didn't seem to line up with the compiler errors I was getting. 
+I still haven't quite wrapped my head around first option. I think I understand the concept in theory, but my mental model didn't seem to line up with the compiler errors I was getting.
 The second option was very easy to use, but unfortunately didn't quite work for me either.
 
 And why is that?
@@ -285,7 +286,7 @@ If anyone has actually read this far and has any ideas about how to proceed, I w
 I didn't use any `unsafe` in this project.
 I generally handled errors by propagating them as far up the thread as possible, then reporting them with `log::error!(...)` + `env_logger` for runtime-determined verbosity.
 
-I tried to avoid `.unwrap` or `.expect`. 
+I tried to avoid `.unwrap` or `.expect`.
 I might have thrown it in once or twice in a simple test case, but I think my code should not panic for the most part.
 
 
