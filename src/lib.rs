@@ -11,8 +11,9 @@ use csv::StringRecord;
 use rayon::prelude::*;
 use std::error::Error;
 use std::io;
-use std::sync::mpsc::{sync_channel, SyncSender};
-use std::thread;
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+use std::sync::Arc;
+use std::thread::{self, JoinHandle};
 
 use state::State;
 use types::{OutputRecord, TransactionRecord};
@@ -92,13 +93,52 @@ pub fn configure_deserialize_workers(num_workers: Option<usize>) {
     }
 }
 
+fn handle_transactions_on_thread(rcv: Receiver<TransactionRecord>, arc_state: Arc<State>) {
+    rcv.iter()
+        .map(|record| handlers::handle_transaction(record, arc_state));
+}
+
+/// Determine which thread should process the transaction.
+///
+/// Currently, just using client_id % num_threads,
+/// since all clients are independent, so we need only
+/// ensure that no two threads simultaneously handle
+/// transactions on the same account.
+fn assign_tx_to_thread(tx: TransactionRecord, num_threads: usize) -> usize {
+    let thread_id = usize::from(tx.client_id) % num_threads;
+    thread_id
+}
+
+fn spawn_handler_threads(
+    num_threads: usize,
+    arc_state: Arc<State>,
+) -> (Vec<JoinHandle<()>>, Vec<SyncSender<TransactionRecord>>) {
+    // TODO: State needs to be behind an Arc
+    (0..num_threads)
+        .map(|_| {
+            // TODO: How large should the buffer be?
+            let (snd, rcv) = sync_channel::<TransactionRecord>(10);
+            let join_handle = thread::spawn(|| handle_transactions_on_thread(rcv, arc_state));
+            (join_handle, snd)
+        })
+        .unzip()
+}
+
+fn handle_tx_batch(tx_batch: Vec<TransactionRecord>, snd: SyncSender<TransactionRecord>) {
+    for record in tx_batch {
+        if let Err(err) = snd.send(record) {
+            log::error!("Error while sending transaction to worker: {}", err);
+        }
+    }
+}
+
 pub fn process_transactions<R: io::Read + Send + 'static, W: io::Write>(
     input_stream: R,
     output_stream: &mut W,
     batch_size: usize,
 ) {
     // TODO: Async / multithreaded?
-    let mut state = State::new();
+    let mut arc_state = Arc::from(State::new());
 
     // Maximum number of batches to keep in the channel at once.
     // Once this limit is reached, IO will pause until one is processed.
@@ -111,16 +151,22 @@ pub fn process_transactions<R: io::Read + Send + 'static, W: io::Write>(
         read_string_records(input_stream, headers_snd, records_snd, batch_size)
     });
 
+    // TODO: CLI arg
+    let num_threads = 4;
+    let (handles, senders) = spawn_handler_threads(num_threads, arc_state.clone());
+
     if let Ok(headers) = headers_rcv.recv() {
-        for batch in records_rcv {
-            let tx_batch: Vec<_> = batch
+        for record_batch in records_rcv {
+            let tx_batch: Vec<_> = record_batch
                 .into_par_iter()
                 .filter_map(|record| deserialize_record(record, &headers))
                 .collect();
 
             for tx in tx_batch {
-                if let Err(err) = handlers::handle_transaction(tx, &mut state) {
-                    log::error!("Error while handling transaction: {}", err);
+                let thread_id = assign_tx_to_thread(tx, num_threads);
+                let snd = senders[thread_id];
+                if let Err(err) = snd.send(tx) {
+                    log::error!("Failed to send transaction record to handler thread");
                 }
             }
         }
@@ -128,7 +174,7 @@ pub fn process_transactions<R: io::Read + Send + 'static, W: io::Write>(
         log::error!("Failed to get CSV headers from reader thread");
     }
 
-    write_balances(state, output_stream);
+    write_balances(&arc_state, output_stream);
 
     // Should already have finished, but wait just in case
     if let Err(err) = reader_handle.join() {
@@ -136,7 +182,7 @@ pub fn process_transactions<R: io::Read + Send + 'static, W: io::Write>(
     }
 }
 
-pub fn write_balances<W: io::Write>(state: State, output_stream: W) {
+pub fn write_balances<W: io::Write>(state: &State, output_stream: W) {
     let mut writer = csv::Writer::from_writer(output_stream);
     for (&client_id, account) in state.accounts.iter() {
         let record = OutputRecord::new(client_id, account);
