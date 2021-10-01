@@ -19,6 +19,20 @@ use std::thread;
 use state::State;
 use types::{OutputRecord, TransactionRecord};
 
+/// Construct csv reader with options.
+/// In particular, disabling trim can
+/// speed up deserialization.
+fn construct_csv_reader<R: io::Read + Send>(input: R, notrim: bool) -> csv::Reader<R> {
+    let mut builder = csv::ReaderBuilder::new();
+
+    // Optionally disable whitespace trimming
+    if !notrim {
+        builder.trim(csv::Trim::All);
+    }
+
+    builder.from_reader(input)
+}
+
 /// Read CSV string records from a stream and send them
 /// across a channel to be deserialized elsewhere.
 fn read_string_records_inner<R: io::Read + Send>(
@@ -26,12 +40,9 @@ fn read_string_records_inner<R: io::Read + Send>(
     headers_snd: SyncSender<StringRecord>,
     records_snd: SyncSender<Vec<StringRecord>>,
     batch_size: usize,
+    notrim: bool,
 ) -> Result<(), Box<dyn Error>> {
-    // TODO: Optionally trim
-    let mut reader = csv::ReaderBuilder::new()
-        .trim(csv::Trim::All)
-        .from_reader(input);
-
+    let mut reader = construct_csv_reader(input, notrim);
     let headers = reader.headers()?;
     headers_snd.send(headers.clone())?;
 
@@ -58,8 +69,10 @@ fn read_string_records<R: io::Read + Send>(
     headers_snd: SyncSender<StringRecord>,
     records_snd: SyncSender<Vec<StringRecord>>,
     batch_size: usize,
+    notrim: bool,
 ) {
-    if let Err(err) = read_string_records_inner(input, headers_snd, records_snd, batch_size) {
+    if let Err(err) = read_string_records_inner(input, headers_snd, records_snd, batch_size, notrim)
+    {
         log::error!("Error while reading: {}", err);
     }
 }
@@ -96,6 +109,7 @@ pub fn process_transactions<R: io::Read + Send + 'static, W: io::Write>(
     input_stream: R,
     output_stream: &mut W,
     batch_size: usize,
+    notrim: bool,
 ) {
     // TODO: Async / multithreaded?
     let mut state = State::new();
@@ -108,7 +122,7 @@ pub fn process_transactions<R: io::Read + Send + 'static, W: io::Write>(
     let (headers_snd, headers_rcv) = sync_channel::<StringRecord>(1);
 
     let reader_handle = thread::spawn(move || {
-        read_string_records(input_stream, headers_snd, records_snd, batch_size)
+        read_string_records(input_stream, headers_snd, records_snd, batch_size, notrim)
     });
 
     if let Ok(headers) = headers_rcv.recv() {

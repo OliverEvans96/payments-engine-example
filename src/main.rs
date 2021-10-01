@@ -23,19 +23,24 @@ struct CliOpts {
     /// Defaults to half of the system's logical cores.
     #[structopt(short)]
     deserialize_workers: Option<usize>,
+
+    /// Disable trimming whitespace from CSV records.
+    /// This can speed up deserialization significantly.
+    #[structopt(long)]
+    notrim: bool,
 }
 
-fn main_command(path: &str, batch_size: usize) {
+fn main_command(path: &str, batch_size: usize, notrim: bool) {
     // Write to stdout
     let mut output = io::stdout();
 
     // Read from stdin or file
     if path == "-" {
         let input = io::stdin();
-        process_transactions(input, &mut output, batch_size);
+        process_transactions(input, &mut output, batch_size, notrim);
     } else {
         if let Ok(input) = fs::File::open(&path) {
-            process_transactions(input, &mut output, batch_size);
+            process_transactions(input, &mut output, batch_size, notrim);
         } else {
             log::error!("Could not open input file '{}'", &path);
         }
@@ -51,11 +56,12 @@ fn main() {
         input_csv_path,
         batch_size,
         deserialize_workers,
+        notrim,
     } = CliOpts::from_args();
 
     // Configure rayon thread pool
     configure_deserialize_workers(deserialize_workers);
 
     // Run
-    main_command(&input_csv_path, batch_size);
+    main_command(&input_csv_path, batch_size, notrim);
 }
