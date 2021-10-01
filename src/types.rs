@@ -1,4 +1,3 @@
-use rand::distributions::{Distribution, Standard};
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt::{Debug, Display};
@@ -109,39 +108,6 @@ pub enum TransactionType {
     Chargeback,
 }
 
-// Proportions of randomly generated types
-// to fall in each category
-// NOTE: The real, proper way to do this might
-// be to implement a custom rand::Distribution,
-// but I'm not going to do that.
-const DEPOSIT_PCNT: f32 = 0.5;
-const WITHDRAWAL_PCNT: f32 = 0.4;
-const DISPUTE_PCNT: f32 = 0.05;
-const RESOLVE_PCNT: f32 = 0.04;
-// const CHARGEBACK_PCNT: f32 = 0.01;
-
-const CUM_DEPOSIT: f32 = 0.0 + DEPOSIT_PCNT;
-const CUM_WITHDRAWAL: f32 = CUM_DEPOSIT + WITHDRAWAL_PCNT;
-const CUM_DISPUTE: f32 = CUM_WITHDRAWAL + DISPUTE_PCNT;
-const CUM_RESOLVE: f32 = CUM_DISPUTE + RESOLVE_PCNT;
-// const CUM_CHARGEBACK: f32 = CUM_RESOLVE + CHARGEBACK_PCNT;
-
-impl Distribution<TransactionType> for Standard {
-    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> TransactionType {
-        // Inspired by https://stackoverflow.com/a/58434531/4228052
-
-        let x: f32 = rng.gen();
-
-        match x {
-            x if x < CUM_DEPOSIT => TransactionType::Deposit,
-            x if x < CUM_WITHDRAWAL => TransactionType::Withdrawal,
-            x if x < CUM_DISPUTE => TransactionType::Dispute,
-            x if x < CUM_RESOLVE => TransactionType::Resolve,
-            _ => TransactionType::Chargeback,
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct TransactionRecord {
     #[serde(rename = "type")]
@@ -153,81 +119,11 @@ pub struct TransactionRecord {
     pub amount: Option<CurrencyFloat>,
 }
 
-// Convert from individual transaction types
-// to TransactionRecord for the sake of
-// generating random valid transaction
-
-impl From<Deposit> for TransactionRecord {
-    fn from(t: Deposit) -> Self {
-        Self {
-            transaction_type: TransactionType::Deposit,
-            client_id: t.client_id,
-            tx_id: t.tx_id,
-            amount: Some(t.amount),
-        }
-    }
-}
-
-impl From<Withdrawal> for TransactionRecord {
-    fn from(t: Withdrawal) -> Self {
-        Self {
-            transaction_type: TransactionType::Withdrawal,
-            client_id: t.client_id,
-            tx_id: t.tx_id,
-            amount: Some(t.amount),
-        }
-    }
-}
-
-impl From<Dispute> for TransactionRecord {
-    fn from(t: Dispute) -> Self {
-        Self {
-            transaction_type: TransactionType::Dispute,
-            client_id: t.client_id,
-            tx_id: t.tx_id,
-            amount: None,
-        }
-    }
-}
-
-impl From<Resolve> for TransactionRecord {
-    fn from(t: Resolve) -> Self {
-        Self {
-            transaction_type: TransactionType::Resolve,
-            client_id: t.client_id,
-            tx_id: t.tx_id,
-            amount: None,
-        }
-    }
-}
-
-impl From<Chargeback> for TransactionRecord {
-    fn from(t: Chargeback) -> Self {
-        Self {
-            transaction_type: TransactionType::Chargeback,
-            client_id: t.client_id,
-            tx_id: t.tx_id,
-            amount: None,
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct Deposit {
     pub client_id: ClientId,
     pub tx_id: TransactionId,
     pub amount: CurrencyFloat,
-}
-impl Transaction for Deposit {
-    #[inline]
-    fn get_tx_id(&self) -> TransactionId {
-        self.tx_id
-    }
-
-    #[inline]
-    fn get_client_id(&self) -> ClientId {
-        self.client_id
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -236,33 +132,11 @@ pub struct Withdrawal {
     pub tx_id: TransactionId,
     pub amount: CurrencyFloat,
 }
-impl Transaction for Withdrawal {
-    #[inline]
-    fn get_tx_id(&self) -> TransactionId {
-        self.tx_id
-    }
-
-    #[inline]
-    fn get_client_id(&self) -> ClientId {
-        self.client_id
-    }
-}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Dispute {
     pub client_id: ClientId,
     pub tx_id: TransactionId,
-}
-impl Transaction for Dispute {
-    #[inline]
-    fn get_tx_id(&self) -> TransactionId {
-        self.tx_id
-    }
-
-    #[inline]
-    fn get_client_id(&self) -> ClientId {
-        self.client_id
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -270,69 +144,12 @@ pub struct Resolve {
     pub client_id: ClientId,
     pub tx_id: TransactionId,
 }
-impl Transaction for Resolve {
-    #[inline]
-    fn get_tx_id(&self) -> TransactionId {
-        self.tx_id
-    }
-
-    #[inline]
-    fn get_client_id(&self) -> ClientId {
-        self.client_id
-    }
-}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Chargeback {
     pub client_id: ClientId,
     pub tx_id: TransactionId,
 }
-
-impl Transaction for Chargeback {
-    #[inline]
-    fn get_tx_id(&self) -> TransactionId {
-        self.tx_id
-    }
-
-    #[inline]
-    fn get_client_id(&self) -> ClientId {
-        self.client_id
-    }
-}
-
-pub trait Transaction {
-    fn get_tx_id(&self) -> TransactionId;
-    fn get_client_id(&self) -> ClientId;
-}
-
-/// This trait indicates whether and how a transaction can be disputed.
-/// To enable new types of transactions to be disputed, implement this
-/// trait for that type, and update TransactionContainer::try_get_disputable.
-pub trait Disputable: Transaction {
-    fn modify_balances_for_dispute(&self, account: &mut Account);
-    fn modify_balances_for_resolve(&self, account: &mut Account);
-    fn modify_balances_for_chargeback(&self, account: &mut Account);
-}
-
-impl Disputable for Deposit {
-    fn modify_balances_for_dispute(&self, account: &mut Account) {
-        account.available -= self.amount;
-        account.held += self.amount;
-    }
-    fn modify_balances_for_resolve(&self, account: &mut Account) {
-        account.available += self.amount;
-        account.held -= self.amount;
-    }
-    fn modify_balances_for_chargeback(&self, account: &mut Account) {
-        account.held -= self.amount;
-    }
-}
-
-/// This transaction must follow a dispute with the same tx_id and client_id
-pub trait PostDispute: Transaction {}
-
-impl PostDispute for Resolve {}
-impl PostDispute for Chargeback {}
 
 #[derive(Debug, PartialEq)]
 pub enum TransactionContainer {
@@ -347,32 +164,8 @@ impl TransactionContainer {
             TransactionContainer::Withdrawal(_) => TransactionType::Withdrawal,
         }
     }
-
-    /// Try to downcast the `TransactionContainer` to `impl Disputable`
-    /// NOTE: If more than Deposit is disputable,
-    /// this will have to change from `impl Disputable` to `Box<dyn Disputable>`.
-    pub fn try_get_disputable(
-        &self,
-    ) -> Result<&Result<impl Disputable, TransactionError>, TransactionType> {
-        match self {
-            // NOTE: Only deposits may be disputed
-            TransactionContainer::Deposit(result) => Ok(result),
-            other => Err(other.tx_type()),
-        }
-    }
-
-    /// Downcast the TransactionContainer to `Box<dyn Transacion>`
-    pub fn get_transaction(&self) -> Result<Box<dyn Transaction>, TransactionError> {
-        match self {
-            TransactionContainer::Deposit(result) => {
-                result.clone().map(|t| Box::new(t) as Box<dyn Transaction>)
-            }
-            TransactionContainer::Withdrawal(result) => {
-                result.clone().map(|t| Box::new(t) as Box<dyn Transaction>)
-            }
-        }
-    }
 }
+
 
 // Internal state
 

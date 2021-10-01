@@ -1,10 +1,9 @@
-use crate::account::AccountAccess;
-use crate::account::{BaseAccountFeatures, UnlockedAccountFeatures};
+use crate::account::{AccountAccess, BaseAccountFeatures, UnlockedAccountFeatures};
 use crate::currency::CurrencyFloat;
 use crate::state::{AccountsState, DisputesState, TransactionsState};
-use crate::types::TransactionError;
-use crate::types::{Deposit, Dispute, PostDispute, Withdrawal};
-use crate::types::{Disputable, Transaction, TransactionId};
+use crate::traits::{Disputable, PostDispute, Transaction};
+use crate::types::{Deposit, Dispute, Withdrawal};
+use crate::types::{TransactionError, TransactionId};
 
 fn check_for_duplicate_tx_id(
     tx_id: TransactionId,
@@ -200,13 +199,13 @@ fn validate_post_dispute_for_existing_tx<'a, 't, 'd, D: Disputable, P: PostDispu
     let client_id = post.get_client_id();
 
     let disputed = disputes.is_disputed(client_id, tx_id);
-        // NOTE: CHECK 2: Cannot dispute an actively disputed transaction
-        if !disputed {
-            return Err(TransactionError::TxNotDisputed {
-                client: client_id,
-                tx: tx_id,
-            });
-        }
+    // NOTE: CHECK 2: Cannot dispute an actively disputed transaction
+    if !disputed {
+        return Err(TransactionError::TxNotDisputed {
+            client: client_id,
+            tx: tx_id,
+        });
+    }
 
     if let Some(access) = accounts.get_mut(client_id) {
         return Ok((disputed_tx, access));

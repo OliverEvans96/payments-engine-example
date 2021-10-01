@@ -1,7 +1,28 @@
-use crate::types::{Account, Deposit, Disputable, Withdrawal};
+use crate::traits::Disputable;
+use crate::types::Account;
+use crate::types::{Deposit, Withdrawal};
 
+/// A locked account cannot deposit or withdraw.
 pub struct LockedAccount<'a>(&'a mut Account);
+
+/// An unlocked account can deposit or withdraw.
 pub struct UnlockedAccount<'a>(&'a mut Account);
+
+impl Account {
+    /// Get appropriate mutable access into the account
+    /// based on its state (locked or unlocked).
+    pub fn access<'a>(&'a mut self) -> AccountAccess<'a> {
+        if self.locked {
+            AccountAccess::Locked(LockedAccount(self))
+        } else {
+            AccountAccess::Unlocked(UnlockedAccount(self))
+        }
+    }
+}
+pub enum AccountAccess<'a> {
+    Locked(LockedAccount<'a>),
+    Unlocked(UnlockedAccount<'a>),
+}
 
 mod private {
     // A bit hacky, but this is a workaround to avoid exposing
@@ -13,6 +34,9 @@ mod private {
     // in a public interface (BaseAccountFeatures)
     // See https://github.com/rust-lang/rust/issues/34537
     use super::Account;
+
+    /// Marker trait for a type that privately holds an Account,
+    /// but does not necessarily expose it publicly.
     pub trait WrapsAccount {
         fn get_account(&self) -> &Account;
         fn get_mut_account(&mut self) -> &mut Account;
@@ -43,6 +67,8 @@ impl<'a> private::WrapsAccount for UnlockedAccount<'a> {
     }
 }
 
+/// This trait implements functionality common to all accounts,
+/// namely viewing, disputing, resolving, and charging back.
 pub trait BaseAccountFeatures: private::WrapsAccount {
     // Since we're using this trait as an object somewhere,
     // these functions can only use dynamic dispatch.
@@ -67,6 +93,7 @@ pub trait BaseAccountFeatures: private::WrapsAccount {
     }
 }
 
+/// Only unlocked accounts may deposit, withdraw, or lock.
 pub trait UnlockedAccountFeatures: private::WrapsAccount {
     fn modify_balances_for_deposit(&mut self, deposit: &Deposit) {
         self.get_mut_account().available += deposit.amount;
@@ -82,20 +109,6 @@ pub trait UnlockedAccountFeatures: private::WrapsAccount {
 impl<'a> BaseAccountFeatures for LockedAccount<'a> {}
 impl<'a> BaseAccountFeatures for UnlockedAccount<'a> {}
 impl<'a> UnlockedAccountFeatures for UnlockedAccount<'a> {}
-
-impl Account {
-    pub fn access<'a>(&'a mut self) -> AccountAccess<'a> {
-        if self.locked {
-            AccountAccess::Locked(LockedAccount(self))
-        } else {
-            AccountAccess::Unlocked(UnlockedAccount(self))
-        }
-    }
-}
-pub enum AccountAccess<'a> {
-    Locked(LockedAccount<'a>),
-    Unlocked(UnlockedAccount<'a>),
-}
 
 impl<'a> AccountAccess<'a> {
     /// Consume the access and return a reference to the contained

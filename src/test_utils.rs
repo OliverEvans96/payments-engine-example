@@ -4,6 +4,8 @@ use crate::handlers::handle_transaction;
 use crate::state::{State,AccountsState};
 use crate::types::{Account, ClientId, TransactionError, TransactionRecord};
 
+/// Given an initial state and a set of transactions,
+/// test that the final account balances match the given expectations.
 pub fn run_test_scenario(
     initial_state: State,
     transactions: Vec<TransactionRecord>,

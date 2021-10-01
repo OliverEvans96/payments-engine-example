@@ -1,9 +1,11 @@
 mod account;
+mod conversions;
 mod currency;
 mod handlers;
 pub mod rand;
 pub mod state;
 pub mod test_utils;
+mod traits;
 pub mod types;
 mod validate;
 
@@ -26,6 +28,8 @@ use types::{OutputRecord, TransactionRecord};
 // TODO: Test resolve / chargeback referencing undisputed transaction
 // TODO: Test dispute / resolve / chargeback with client_id not matching referenced transaction
 
+/// Read CSV string records from a stream and send them
+/// across a channel to be deserialized elsewhere.
 fn read_string_records_inner<R: io::Read + Send>(
     input: R,
     headers_snd: SyncSender<StringRecord>,
@@ -57,6 +61,7 @@ fn read_string_records_inner<R: io::Read + Send>(
     Ok(())
 }
 
+/// Thin error-handling wrapper around `read_string_records_inner`
 fn read_string_records<R: io::Read + Send>(
     input: R,
     headers_snd: SyncSender<StringRecord>,
@@ -68,7 +73,7 @@ fn read_string_records<R: io::Read + Send>(
     }
 }
 
-/// Can happen in any order
+/// Deserialize a single CSV string record.
 fn deserialize_record(record: StringRecord, headers: &StringRecord) -> Option<TransactionRecord> {
     match record.deserialize(Some(headers)) {
         Ok(ab) => Some(ab),
@@ -79,6 +84,8 @@ fn deserialize_record(record: StringRecord, headers: &StringRecord) -> Option<Tr
     }
 }
 
+/// Set the number of workers in rayon's global
+/// thread pool to dedicate to CSV deserialization.
 pub fn configure_deserialize_workers(num_workers: Option<usize>) {
     // Default to half of the available logical cores
     let num_threads = num_workers.unwrap_or_else(|| num_cpus::get() / 2);
@@ -92,6 +99,8 @@ pub fn configure_deserialize_workers(num_workers: Option<usize>) {
     }
 }
 
+/// Read CSV records from an input stream and write them to an output stream.
+/// Transactions are deserialized in parallel, but currently handled serially.
 pub fn process_transactions<R: io::Read + Send + 'static, W: io::Write>(
     input_stream: R,
     output_stream: &mut W,
@@ -136,6 +145,7 @@ pub fn process_transactions<R: io::Read + Send + 'static, W: io::Write>(
     }
 }
 
+/// Write final account balances to an output stream, consuming the state.
 pub fn write_balances<W: io::Write>(state: State, output_stream: W) {
     let mut writer = csv::Writer::from_writer(output_stream);
     for (&client_id, account) in state.accounts.iter() {

@@ -4,8 +4,7 @@ use crate::account::AccountAccess;
 use crate::types::{Account, TransactionContainer, TransactionError};
 use crate::types::{ClientId, TransactionId};
 
-// TODO: avoid locking whole state to read/write
-
+/// Component of application state dealing with accounts: balances and status.
 #[derive(Debug, Default, PartialEq)]
 pub struct AccountsState(HashMap<ClientId, Account>);
 
@@ -42,6 +41,14 @@ impl AccountsState {
     }
 }
 
+/// Record of all transactions relevant to engine operation.
+/// This is not intended for logging purposes.
+/// Disputes, resolves, and chargebacks are not stored since
+/// they are never directly referenced by other transactions.
+/// Therefore, this struct contains only deposits and withdrawals.
+///
+/// Both successful and failed transactions are stored
+/// within TransactionContainer, which wraps a Result.
 #[derive(Debug, Default)]
 pub struct TransactionsState {
     by_client: HashMap<ClientId, HashMap<TransactionId, TransactionContainer>>,
@@ -79,14 +86,6 @@ impl TransactionsState {
         client_txs.entry(tx_id).or_insert(transaction);
     }
 
-    // TODO: Remove
-    // pub fn iter_client_unordered(
-    //     &self,
-    //     client_id: ClientId,
-    // ) -> Option<impl Iterator<Item = (&TransactionId, &TransactionContainer)>> {
-    //     self.by_client.get(&client_id).and_then(|c| Some(c.iter()))
-    // }
-
     /// Get the set of tx ids for this client
     pub fn get_tx_ids_by_client(&self, client_id: ClientId) -> HashSet<TransactionId> {
         // See https://stackoverflow.com/a/59156843/4228052
@@ -98,6 +97,14 @@ impl TransactionsState {
     }
 }
 
+/// Current state of all disputes, past and present.
+/// Once a dispute is filed for a transaction, it is
+/// considered actively disputed, and its tx_id is stored
+/// in the `active` field.
+///
+/// Once a resolve or chargeback has been filed, it is
+/// considered settled, and can no longer be re-disputed.
+/// These tx_ids are found in the `settled` field.
 #[derive(Debug, Default)]
 pub struct DisputesState {
     active: HashMap<ClientId, HashSet<TransactionId>>,
@@ -105,24 +112,25 @@ pub struct DisputesState {
 }
 
 impl DisputesState {
+    /// Determine whether a client's transaction is actively disputed.
     pub fn is_disputed(&self, client_id: ClientId, tx_id: TransactionId) -> bool {
-        if let Some(client_disputes) = self.active.get(&client_id) {
-            client_disputes.contains(&tx_id)
+        if let Some(client_active) = self.active.get(&client_id) {
+            client_active.contains(&tx_id)
         } else {
-            // If we have no disputes for this client, then tx is not disputed.
             false
         }
     }
 
+    /// Determine whether a client's transaction has been disputed and settled.
     pub fn is_settled(&self, client_id: ClientId, tx_id: TransactionId) -> bool {
-        if let Some(client_disputes) = self.settled.get(&client_id) {
-            client_disputes.contains(&tx_id)
+        if let Some(client_settled) = self.settled.get(&client_id) {
+            client_settled.contains(&tx_id)
         } else {
-            // If we have no disputes for this client, then tx is not disputed.
             false
         }
     }
 
+    /// Mark a transaction as actively disputed.
     pub fn dispute_tx(
         &mut self,
         client_id: ClientId,
@@ -143,8 +151,7 @@ impl DisputesState {
         }
     }
 
-    // TODO: Don't allow settled transactions to be re-disputed.
-
+    /// Mark a transaction as settled.
     pub fn settle_dispute(
         &mut self,
         client_id: ClientId,
@@ -172,16 +179,24 @@ impl DisputesState {
         })
     }
 
+    /// Get the set of all disputed transaction ids for a client.
     pub fn get_disputed_tx_ids_by_client(&self, client_id: ClientId) -> HashSet<TransactionId> {
-        self.active.get(&client_id).cloned().unwrap_or_else(HashSet::new)
+        self.active
+            .get(&client_id)
+            .cloned()
+            .unwrap_or_else(HashSet::new)
     }
 
+    /// Get the set of all settled transaction ids for a client.
     pub fn get_settled_tx_ids_by_client(&self, client_id: ClientId) -> HashSet<TransactionId> {
-        self.settled.get(&client_id).cloned().unwrap_or_else(HashSet::new)
+        self.settled
+            .get(&client_id)
+            .cloned()
+            .unwrap_or_else(HashSet::new)
     }
-
 }
 
+/// Root application state
 #[derive(Debug)]
 pub struct State {
     pub accounts: AccountsState,

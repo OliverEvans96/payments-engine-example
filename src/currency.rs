@@ -1,6 +1,7 @@
 // Only need 4 decimals precision - f64 would be overkill
 pub type CurrencyFloat = f32;
 
+/// Round to four decimal places.
 pub fn round_currency(amount: CurrencyFloat) -> CurrencyFloat {
     const NUM_DIGITS: u8 = 4;
     // Round to NUM_DIGITS decimal places
@@ -8,6 +9,8 @@ pub fn round_currency(amount: CurrencyFloat) -> CurrencyFloat {
     (amount * multiplier).round() / multiplier
 }
 
+
+/// Round _down_ (floor) to four decimal places.
 pub fn floor_currency(amount: CurrencyFloat) -> CurrencyFloat {
     const NUM_DIGITS: u8 = 4;
     // Round down to NUM_DIGITS decimal places
