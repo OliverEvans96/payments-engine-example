@@ -1,5 +1,5 @@
 ![Travis (.com)](https://img.shields.io/travis/com/OliverEvans96/payments-engine-example)
-[![Docs](https://assets.readthedocs.org/static/projects/badges/passing-flat.svg)](https://oliverevans96.github.io/payments-engine-example/payments_engine_example/index.html)]
+[![Docs](https://assets.readthedocs.org/static/projects/badges/passing-flat.svg)](https://oliverevans96.github.io/payments-engine-example/payments_engine_example/index.html)
 
 <!-- [![Coverage Status](https://coveralls.io/repos/github/OliverEvans96/payments-engine-example/badge.svg?branch=main)](https://coveralls.io/github/OliverEvans96/payments-engine-example?branch=main) -->
 
