@@ -19,15 +19,6 @@ use std::thread;
 use state::State;
 use types::{OutputRecord, TransactionRecord};
 
-// TODO: Test locked account
-// TODO: Test duplicate transaction id for valid first transaction
-// TODO: Test duplicate transaction id for invalid first transaction
-// TODO: Test unordered transaction ids
-// TODO: Test dispute referencing nonexistent transaction
-// TODO: Test resolve / chargeback referencing nonexistent transaction
-// TODO: Test resolve / chargeback referencing undisputed transaction
-// TODO: Test dispute / resolve / chargeback with client_id not matching referenced transaction
-
 /// Read CSV string records from a stream and send them
 /// across a channel to be deserialized elsewhere.
 fn read_string_records_inner<R: io::Read + Send>(
@@ -158,9 +149,4 @@ pub fn write_balances<W: io::Write>(state: State, output_stream: W) {
     if let Err(err) = writer.flush() {
         log::error!("error flusing serialized account balances: {}", err);
     }
-}
-
-#[cfg(test)]
-mod tests {
-    // TODO: unit tests
 }

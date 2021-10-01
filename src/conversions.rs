@@ -59,3 +59,96 @@ impl From<Chargeback> for TransactionRecord {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::types::{Chargeback, Deposit, Dispute, Resolve, Withdrawal};
+    use crate::types::{TransactionRecord, TransactionType};
+
+    #[test]
+    fn test_deposit_to_record() {
+        let deposit = Deposit {
+            amount: 3.6,
+            client_id: 17,
+            tx_id: 199,
+        };
+
+        let record = TransactionRecord {
+            transaction_type: TransactionType::Deposit,
+            amount: Some(3.6),
+            client_id: 17,
+            tx_id: 199,
+        };
+
+        assert_eq!(record, deposit.into());
+    }
+
+    #[test]
+    fn test_withdrawal_to_record() {
+        let withdrawal = Withdrawal {
+            amount: 3.6,
+            client_id: 17,
+            tx_id: 199,
+        };
+
+        let record = TransactionRecord {
+            transaction_type: TransactionType::Withdrawal,
+            amount: Some(3.6),
+            client_id: 17,
+            tx_id: 199,
+        };
+
+        assert_eq!(record, withdrawal.into());
+    }
+
+    #[test]
+    fn test_dispute_to_record() {
+        let dispute = Dispute {
+            client_id: 17,
+            tx_id: 199,
+        };
+
+        let record = TransactionRecord {
+            transaction_type: TransactionType::Dispute,
+            amount: None,
+            client_id: 17,
+            tx_id: 199,
+        };
+
+        assert_eq!(record, dispute.into());
+    }
+
+    #[test]
+    fn test_resolve_to_record() {
+        let resolve = Resolve {
+            client_id: 17,
+            tx_id: 199,
+        };
+
+        let record = TransactionRecord {
+            transaction_type: TransactionType::Resolve,
+            amount: None,
+            client_id: 17,
+            tx_id: 199,
+        };
+
+        assert_eq!(record, resolve.into());
+    }
+
+    #[test]
+    fn test_chargeback_to_record() {
+        let chargeback = Chargeback {
+            client_id: 17,
+            tx_id: 199,
+        };
+
+        let record = TransactionRecord {
+            transaction_type: TransactionType::Chargeback,
+            amount: None,
+            client_id: 17,
+            tx_id: 199,
+        };
+
+        assert_eq!(record, chargeback.into());
+    }
+}

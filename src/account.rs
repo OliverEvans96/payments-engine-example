@@ -137,3 +137,34 @@ impl<'a> private::WrapsAccount for AccountAccess<'a> {
 }
 
 impl<'a> BaseAccountFeatures for AccountAccess<'a> {}
+
+#[cfg(test)]
+mod tests {
+    use crate::account::{AccountAccess, UnlockedAccountFeatures};
+    use crate::types::Account;
+
+    #[test]
+    fn test_account_unlocked() {
+        let mut account = Account::default();
+        assert!(matches!(account.access(), AccountAccess::Unlocked(_)));
+    }
+
+    #[test]
+    fn test_account_locked() {
+        let mut account = Account::default();
+        account.locked = true;
+        assert!(matches!(account.access(), AccountAccess::Locked(_)));
+    }
+
+    #[test]
+    fn test_lock_account() {
+        let mut account = Account::default();
+        if let AccountAccess::Unlocked(mut access) = account.access() {
+            access.lock();
+        } else {
+            assert!(false);
+        }
+        assert!(matches!(account.access(), AccountAccess::Locked(_)));
+        assert_eq!(account.locked, true);
+    }
+}
