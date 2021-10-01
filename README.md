@@ -3,6 +3,8 @@
 
 <!-- [![Coverage Status](https://coveralls.io/repos/github/OliverEvans96/payments-engine-example/badge.svg?branch=main)](https://coveralls.io/github/OliverEvans96/payments-engine-example?branch=main) -->
 
+# Payments Engine Example
+
 ```
 payments-engine-example 0.1
 Oliver Evans <oliverevans96@gmail.com>
@@ -26,7 +28,7 @@ ARGS:
 ```
 
 
-# Problem Overview
+## Problem Overview
 
 The prompt for this exercise is as follows:
 
@@ -80,12 +82,12 @@ client,  available,  held,  total,      locked
 ```
 
 
-# Solution Overview
+## Solution Overview
 
 So let me tell you what I've done.
 
 
-## Assumptions
+### Assumptions
 
 Having very little knowledge of banking, the prompt inevitably leaves a bit of room for interpretation.
 I've made the following assumptions:
@@ -96,7 +98,7 @@ I've made the following assumptions:
 - Negative balances are not impossible. If a deposit, withdrawal, dispute-deposit sequence yields a negative balance, it's our fault for approving the chargeback.
 
 
-## Data Structures
+### Data Structures
 
 The approach I'm taking is pretty straightforward.
 I'm storing all application state in a single `State` struct, which has three fields: `accounts`, `transactions`, and `disputes`, each having type `AccountsState`, `TransactionsState`, and `DisputesState` respectively.
@@ -110,7 +112,7 @@ I'm storing all application state in a single `State` struct, which has three fi
 Using outer `HashMaps` in these data structures to group by `client_id` is not strictly necessary, and I wasn't initially doing this, but it became necessary once I wanted to generate valid test transactions, and I thought it would eventually make parallelizing transaction processing simpler, since in the current paradigm, all accounts are independent, making for theoretically low-hanging parallelizable fruit.
 
 
-## The Life of a Transaction
+### The Life of a Transaction
 
 I'm using `serde` and the `csv` crate to deserialize each CSV lines into a `TransactionRecord` struct, which contains a `TransactionType` enum.
 Then, I'm `match`ing on `TransactionType` to convert to a specific type of transaction (e.g. `Dispute`, `Withdrawal`), which implements the common `Transaction` trait.
@@ -130,7 +132,7 @@ Currently, only withdrawals and deposits are being stored in `TransactionContain
 For now, it's just not necessary to store the other three, and they don't even have their own `tx_id`s.
 
 
-## Extensibility
+### Extensibility
 
 I mentioned above that only deposits are disputable based on my limited understanding of the scenario.
 Presumably, everything should be disputable in the real world.
@@ -138,7 +140,7 @@ Luckily, if someone comes along who knows how to dispute another type of transac
 They'll also need to "register" this new implementation by adding a `match` arm to the `try_get_disputable` function on `TransactionContainer`, which attempts to downcast a specific transaction type into `impl Disputable` if we know how to do so. See `traits.rs` for details.
 
 
-## Maintainability
+### Maintainability
 
 TODO
 
@@ -148,14 +150,14 @@ TODO
 - type aliases: TransactionId, ClientId, CurrencyFloat
 
 
-## Code Organization
+### Code Organization
 
 TODO
 
 - maintainability
 
 
-# Automated testing
+## Automated testing
 
 TODO
 
@@ -165,7 +167,7 @@ TODO
     - unit tests
 
 
-# Generating Test Data
+## Generating Test Data
 
 TODO
 
@@ -195,7 +197,7 @@ OPTIONS:
 ```
 
 
-# Performance & Efficiency
+## Performance & Efficiency
 
 1bfde6d5 - 10 million in 13.95 seconds = 716k tx/sec
 without trim - 10.87 sec = 920k tx/sec
@@ -217,7 +219,7 @@ TODO
             - https://stackoverflow.com/questions/40095383/how-to-return-a-reference-to-a-sub-value-of-a-value-that-is-under-a-mutex
 
 
-# Safety & Error Handling
+## Safety & Error Handling
 
 TODO
 
@@ -227,7 +229,7 @@ TODO
     - occasional use of ?
 
 
-# CI / CD
+## CI / CD
 
 TODO
 
