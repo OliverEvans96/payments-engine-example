@@ -291,7 +291,7 @@ I might have thrown it in once or twice in a simple test case, but I think my co
 
 ## Command Line Interface
 
-To define the command line interface, I used [`structopt`](https://docs.rs/structopt/0.3.23/structopt/), which is a very nice wrapper around [`clap`](https://docs.rs/clap/2.33.3/clap/) that uses proc macros on a user-defined struct instead of the unweildy builder that raw `clap` appears to be.
+To define the command line interface, I used [`structopt`](https://docs.rs/structopt/0.3.23/structopt/), which is a very nice wrapper around [`clap`](https://docs.rs/clap/2.33.3/clap/) that uses proc macros on a user-defined struct instead of the unweildy builder spaghetti that raw `clap` appears to be.
 
 ## CI / CD
 
