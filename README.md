@@ -229,7 +229,7 @@ With trimming disabled, it was about a 1:1 ratio of deserializing to processing,
 ![kcachegrind-notrim](./assets/kcachegrind-notrim.png)
 
 
-### Parallelization
+### Parallelizing Deserialization :)
 
 Since the program appeared CPU-bound rather than IO-bound, my next step was to attempt parallelizing.
 
@@ -246,35 +246,58 @@ The processing times for 10 million transactions are given in the following tabl
 | 10 million | 4 x parallel | true  | 11.84s | 844k   |
 | 10 million | 4 x parallel | false | 10.85s | 921k   |
 
-Observing `htop`, I notice that even when spawning 8 worker threads for deserialization on my 8 core machine, less than half of my available CPU resources are used.
+Observing `htop`, I notice that even when spawning 8 worker threads for deserialization on my 8 core machine, less than half of my available CPU resources are used (Ignore the memory usage by my 17 billion browser tabs).
 
 ![htop](./assets/htop.png)
 
 I suspect this indicates that the bottleneck is now transaction processing, and the deserializing workers are spending most of their time waiting since I'm using a buffered queue, so they can't produce significantly more than what's being processed down the line.
 
-TODO
-    - attempt to parallelize transaction handling
-        - parallel across accounts
-        - couldn't return references behind rwlock / mutex
-            - owned_ref
-            - parking_log
-            - https://stackoverflow.com/questions/40095383/how-to-return-a-reference-to-a-sub-value-of-a-value-that-is-under-a-mutex
+## Parallelizing Transaction Processing :(
 
+The next step was to attempt to parallelize transaction handling.
+In theory, this should be possible, since all accounts are independent.
+So as long as no two threads are processing transactions for the same account simultaneously (lest they become disordered), there should be no issue.
+However, in practice, it turned out to require a major refactor, which I had to abandon for the time being due to time constraints.
 
+The main issue I ran into was that accessing shared data requires the introduction of `Arc<RwLock>`s and/or `Arc<Mutexes>`.
+This didn't seem like a problem at first, until I realized that most of my state access was designed around returning containers wrapping `&T`s and `&mut T` references to the underlying data.
+But data behind a `Mutex` or `RwLock` can't be trivially returned to the caller, because the RAII guard is generally a local variable on the callee's stack, which will be dropped on return.
+You generally have to return the whole `Mutex` / `RwLock`, and let the caller access the data themselves, and that just turned out to be a radical shift from the approach I had been taking.
+
+Now, it is actually possible to return references to objects behind locks.
+In particular, I found some discussion [on StackOverflow](https://stackoverflow.com/questions/40095383/how-to-return-a-reference-to-a-sub-value-of-a-value-that-is-under-a-mutex) mentioning two potential approaches:
+- The [`owning_ref`](https://kimundi.github.io/owning-ref-rs/owning_ref/index.html) crate, which bundles a `MutexGuard` with the underlying data to prevent `.drop` from being called
+- `parking_lot::Mutex` has a `Mutex::map` function which maps the mutex guard to a reference derived from the object it guards.
+
+I still haven't quite wrapped my head around first option. I think I understand the concept in theory, but my mental model didn't seem to line up with the compiler errors I was getting. 
+The second option was very easy to use, but unfortunately didn't quite work for me either.
+
+And why is that?
+Because of my darn nested HashMaps.
+Starting from a `RwLock<HashMap<ClientId, Arc<Mutex<Account>>>>` and attmpting a `Mutex::map`, I couldn't just return a reference from `&HashMap<ClientId, Arc<Mutex<Account>>>` to `&Account`, because the inner `Mutex` has to _also_ be locked, which requires allocating a second RAII guard, which is dropped when the closure to get the inner reference finishes.
+
+So that's the story of my attempted parallelism in transaction processing.
+If anyone has actually read this far and has any ideas about how to proceed, I would really love to hear what you think.
 
 
 ## Safety & Error Handling
 
-TODO
+I didn't use any `unsafe` in this project.
+I generally handled errors by propagating them as far up the thread as possible, then reporting them with `log::error!(...)` + `env_logger` for runtime-determined verbosity.
 
-- safety / error handling (logging)
-    - logging
-    - error types & propagation
-    - occasional use of ?
+I tried to avoid `.unwrap` or `.expect`. 
+I might have thrown it in once or twice in a simple test case, but I think my code should not panic for the most part.
 
+
+## Command Line Interface
+
+To define the command line interface, I used [`structopt`](https://docs.rs/structopt/0.3.23/structopt/), which is a very nice wrapper around [`clap`](https://docs.rs/clap/2.33.3/clap/) that uses proc macros on a user-defined struct instead of the unweildy builder that raw `clap` appears to be.
 
 ## CI / CD
 
-TODO
+I also set up Travis CI to build & test the code, as well as generate documentation and push is to GitHub pages.
+See the badges at the top of this README.
 
-- travis CI, docs
+## Thanks! 🎉
+
+Thanks for reading :) I hope you're having a nice day!
