@@ -23,8 +23,6 @@ pub struct OutputRecord {
     pub locked: bool,
 }
 
-// TODO: Test outputrecord formatting
-
 impl OutputRecord {
     pub fn new(client_id: ClientId, account: &Account) -> Self {
         OutputRecord {

@@ -192,7 +192,6 @@ impl TransactionGenerator {
         let mut rng = thread_rng();
         let transaction_type: TransactionType = rng.gen();
         match transaction_type {
-            // TODO: Move these to functions
             TransactionType::Deposit => self.generate_deposit(),
             TransactionType::Withdrawal => self.generate_withdrawal(),
             TransactionType::Dispute => self.generate_dispute(),
