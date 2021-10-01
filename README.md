@@ -211,18 +211,50 @@ OPTIONS:
 
 ## Performance & Efficiency
 
-1bfde6d5 - 10 million in 13.95 seconds = 716k tx/sec
-without trim - 10.87 sec = 920k tx/sec
+With 10 million transactions in hand, I ran my code with `--release` to see how fast it could go.
+As of commit `1bfde6d5, I was seeing about 716k tx/sec.
 
-4 des CPUS - 11.84 = 844k tx/sec
-without trim - 10.85 sec = 921 tx/sec
+Curious where execution time was being spent, I ran a smaller dataset through `valgrind` / `callgrind` and visualized the call graph using `kcachegrind`:
+
+### With `trim`
+
+![kcachegrind-trim](./assets/kcachegrind-trim.png)
+
+I noticed about a 3:1 ratio of time spent deserializing vs. processing transactions.
+In particular, I noticed whitespace trimming accounting for a decent amount of time, so I added a flag to disable it.
+
+With trimming disabled, it was about a 1:1 ratio of deserializing to processing, as shown below.
+
+### Without `trim`
+![kcachegrind-notrim](./assets/kcachegrind-notrim.png)
+
+
+### Parallelization
+
+Since the program appeared CPU-bound rather than IO-bound, my next step was to attempt parallelizing.
+
+I used the `rayon` data-parallelism library to deserialize transactions in batches. 
+Each batch was sent from a single `csv::StringRecord` thread through a `mpsc::channel` to be divided and deserialized among the worker threads.
+
+Unfortunately, although my CPUs were hotter, the speedup wasn't considerable.
+The processing times for 10 million transactions are given in the following table.
+
+|------------|--------------|-------|--------|--------|
+| # records  | algorithm    | trim  | time   | tx/sec |
+|------------|--------------|-------|--------|--------|
+| 10 million | serial       | true  | 13.95s | 716k   |
+| 10 million | serial       | false | 10.87s | 920k   |
+| 10 million | 4 x parallel | true  | 11.84s | 844k   |
+| 10 million | 4 x parallel | false | 10.85s | 921k   |
+|------------|--------------|-------|--------|--------|
+
+Observing `htop`, I notice that even when spawning 8 worker threads for deserialization on my 8 core machine, less than half of my available CPU resources are used.
+
+![htop](./assets/htop.png)
+
+I suspect this indicates that the bottleneck is now transaction processing, and the deserializing workers are spending most of their time waiting since I'm using a buffered queue, so they can't produce significantly more than what's being processed down the line.
 
 TODO
-
-- efficiency
-    - profiling screenshots
-    - rayon
-    - performance
     - attempt to parallelize transaction handling
         - parallel across accounts
         - couldn't return references behind rwlock / mutex
@@ -231,11 +263,6 @@ TODO
             - https://stackoverflow.com/questions/40095383/how-to-return-a-reference-to-a-sub-value-of-a-value-that-is-under-a-mutex
 
 
-With trim
-![kcachegrind-trim](./assets/kcachegrind-trim.png)
-
-Without trim
-![kcachegrind-notrim](./assets/kcachegrind-notrim.png)
 
 
 ## Safety & Error Handling
