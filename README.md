@@ -1,9 +1,7 @@
-![Travis (.com)](https://img.shields.io/travis/com/OliverEvans96/payments-engine-example)
+[![Build Status](https://app.travis-ci.com/OliverEvans96/payments-engine-example.svg?branch=main)](https://app.travis-ci.com/OliverEvans96/payments-engine-example)
 [![Docs](https://assets.readthedocs.org/static/projects/badges/passing-flat.svg)](https://oliverevans96.github.io/payments-engine-example/payments_engine_example/index.html)
 
 <!-- [![Coverage Status](https://coveralls.io/repos/github/OliverEvans96/payments-engine-example/badge.svg?branch=main)](https://coveralls.io/github/OliverEvans96/payments-engine-example?branch=main) -->
-
-# Overview
 
 ```
 payments-engine-example 0.1
@@ -27,7 +25,8 @@ ARGS:
     <input-csv-path>    Path to transactions CSV file, or '-' for stdin
 ```
 
-## Problem Overview
+
+# Problem Overview
 
 The prompt for this exercise is as follows:
 
@@ -80,23 +79,74 @@ client,  available,  held,  total,      locked
 52,      4030.088,   0.0,   4030.088,   false
 ```
 
-## Solution Overview
+
+# Solution Overview
+
+So let me tell you what I've done.
+
+
+## Assumptions
+
+Having very little knowledge of banking, the prompt inevitably leaves a bit of room for interpretation.
+I've made the following assumptions:
+- Deposits and withdrawals must have positive amounts.
+- Once a transaction has been disputed and settled, it can't be re-disputed. Otherwise, you risk chargeback loops, which is certainly not desirable.
+- Locked accounts cannot deposit or withdrawal, but can dispute, resolve and chargeback.
+- *Only deposits can be disputed*. Given the instruction that disputes should _increase_ the `held` amount, I just haven't figured how that would make sense if disputing withdrawals were allowed.
+- Negative balances are not impossible. If a deposit, withdrawal, dispute-deposit sequence yields a negative balance, it's our fault for approving the chargeback.
+
+
+## Data Structures
+
+The approach I'm taking is pretty straightforward.
+I'm storing all application state in a single `State` struct, which has three fields: `accounts`, `transactions`, and `disputes`, each having type `AccountsState`, `TransactionsState`, and `DisputesState` respectively.
+
+- `AccountsState` simply wraps a `HashMap` of `Account`s indexed by `client_id`.
+- `TransactionsState` has a two parts:
+    - a nested `HashMap` pair, indexing transactions by client, then by transacion id for transaction lookups
+    - a `HashSet` of all transaction ids for duplicate identification
+- `DisputesState` has two fields, both of which are `HashSets` of `tx_id`s nested inside of a `HashMap` keyed by `client_id`. One field is for actively disputed transaction ids, and the other is for previously disputed (settled) transactions.
+
+Using outer `HashMaps` in these data structures to group by `client_id` is not strictly necessary, and I wasn't initially doing this, but it became necessary once I wanted to generate valid test transactions, and I thought it would eventually make parallelizing transaction processing simpler, since in the current paradigm, all accounts are independent, making for theoretically low-hanging parallelizable fruit.
+
+
+## The Life of a Transaction
+
+I'm using `serde` and the `csv` crate to deserialize each CSV lines into a `TransactionRecord` struct, which contains a `TransactionType` enum.
+Then, I'm `match`ing on `TransactionType` to convert to a specific type of transaction (e.g. `Dispute`, `Withdrawal`), which implements the common `Transaction` trait.
+
+That struct then gets validated, checking that both it's well-formatted and has sensible values, _and_ that it's a legal transaction considering current state of the engine based on all previous transactions.
+
+The last step of each validation function is to return an `AccountAccess` enum, which gives _appropriate_ mutable access to the account in question based on its current state.
+It may be of a `Locked` or `Unlocked` variant depending on the state of the account.
+The `Locked` variant wraps a `LockedAccount` struct, and the `Unlocked` variant wraps an `UnlockedAccount`.
+Both `LockedAccount` and `UnlockedAccount` implement the `BaseAccountFeatures` trait, which allow updating account balances for disputing, resolving, or charging-back previous transactions.
+But only `UnlockedAccount` implements `UnlockedAccountFeatures`, which allows updating balances for new deposits and withdrawals, as well as locking the account.
+Currently, the system has no concept of unlocking an account, but this could be achieved via a `LockedAccountFeatures` trait providing an `.unlock()` method, implemented only by `LockedAccount`. See `account.rs` for details.
+
+Once the account has been updated, the transaction gets wrapped in a `TransactionContainer` enum with a variant for each relevant transaction type, and stored in the `state.transactions` HashMap for easy lookup down the road.
+
+Currently, only withdrawals and deposits are being stored in `TransactionContainers`.
+For now, it's just not necessary to store the other three, and they don't even have their own `tx_id`s.
+
+
+## Extensibility
+
+I mentioned above that only deposits are disputable based on my limited understanding of the scenario.
+Presumably, everything should be disputable in the real world.
+Luckily, if someone comes along who knows how to dispute another type of transaction, they simply need to implement the `Disputable` trait for that type, which specifies how to modify balances for disputes, resolves, and chargebacks.
+They'll also need to "register" this new implementation by adding a `match` arm to the `try_get_disputable` function on `TransactionContainer`, which attempts to downcast a specific transaction type into `impl Disputable` if we know how to do so. See `traits.rs` for details.
+
+
+## Maintainability
 
 TODO
 
-- interesting notes
-    - possible to have negative balance (chargeback after withdrawal)
+- returning early
+- using ?
+- controlled getter / setter methods, communicating via public interfaces
+- type aliases: TransactionId, ClientId, CurrencyFloat
 
-### Assumptions
-
-TODO
-
-- document assumptions
-    - no re-disputing
-    - no negative transactions
-    - locked accounts cannot deposit or withdrawal, but can dispute, resolve and chargeback
-
-- how to dispute withdrawal
 
 ## Code Organization
 
@@ -104,16 +154,6 @@ TODO
 
 - maintainability
 
-
-# Using Types
-
-TODO
-
-- enforce invariants with type system
-    - account access (lock / unlock)
-    - Disputable (& how to implement more)
-    - CLI with structopt / clap
-    - dyn
 
 # Automated testing
 
@@ -124,6 +164,7 @@ TODO
     - inline tests
     - unit tests
 
+
 # Generating Test Data
 
 TODO
@@ -131,6 +172,28 @@ TODO
 - transaction generation
     - process
     - data files
+
+```
+generate-transactions 0.1
+Oliver Evans <oliverevans96@gmail.com>
+Generate random valid transactions for payment processing engine.
+
+USAGE:
+    generate-transactions [OPTIONS]
+
+FLAGS:
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+
+OPTIONS:
+    -a, --attempts <attempts>            Maximum number of times to attempt to generate a new valid transaction before
+                                         aborting [default: 10000]
+    -c, --clients <clients>              Maximum number of clients to generate transactions for. Client IDs will be
+                                         between 1 and this number [default: 100]
+    -d, --deposit <deposit>              Maximum amount for deposits [default: 10000]
+    -t, --transactions <transactions>    Number of transactions to generate. Defaults to infinite (run until cancelled)
+```
+
 
 # Performance & Efficiency
 
@@ -162,6 +225,7 @@ TODO
     - logging
     - error types & propagation
     - occasional use of ?
+
 
 # CI / CD
 
