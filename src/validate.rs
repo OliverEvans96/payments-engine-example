@@ -22,7 +22,6 @@ fn check_for_positive_amount(
     tx: TransactionId,
     amount: CurrencyFloat,
 ) -> Result<(), TransactionError> {
-    // NOTE: discarding transactions with negative amounts
     if amount > 0.0 {
         Ok(())
     } else {
@@ -232,7 +231,7 @@ pub fn validate_post_dispute<'a, 't, 'd, T: PostDispute>(
     transactions: &'t TransactionsState,
     disputes: &'d DisputesState,
 ) -> Result<(&'t impl Disputable, AccountAccess<'a>), TransactionError> {
-    // NOTE: disputes and resolvess do not have their own transaction id,
+    // NOTE: disputes and resolves do not have their own transaction id,
     // they refer to a deposit or withdrawal
     // NOTE: locked accounts are still allowed to dispute and resolve,
     // just not deposit or withdraw
