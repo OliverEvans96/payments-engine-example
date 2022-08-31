@@ -184,7 +184,7 @@ fn validate_post_dispute_for_existing_tx<'a, 't, 'd, D: Disputable, P: PostDispu
     disputed_tx: &'t D,
     accounts: &'a mut AccountsState,
     disputes: &'d DisputesState,
-) -> Result<(&'t impl Disputable, AccountAccess<'a>), TransactionError> {
+) -> Result<(&'t (impl Disputable + 't), AccountAccess<'a>), TransactionError> {
     // NOTE: CHECK 1: client_id must match disputed transaction client_id
     if post.get_client_id() != disputed_tx.get_client_id() {
         return Err(TransactionError::ClientMismatch {
@@ -230,7 +230,7 @@ pub fn validate_post_dispute<'a, 't, 'd, T: PostDispute>(
     accounts: &'a mut AccountsState,
     transactions: &'t TransactionsState,
     disputes: &'d DisputesState,
-) -> Result<(&'t impl Disputable, AccountAccess<'a>), TransactionError> {
+) -> Result<(&'t (impl Disputable + 't), AccountAccess<'a>), TransactionError> {
     // NOTE: disputes and resolves do not have their own transaction id,
     // they refer to a deposit or withdrawal
     // NOTE: locked accounts are still allowed to dispute and resolve,
